@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Semantic color tokens from design-system/MASTER.md, expressed as RGB triples
+ * Semantic color tokens for the whole app, expressed as RGB triples
  * so Tailwind can apply alpha (`bg-accent/10`). Components never use raw hex.
  */
 :root {

@@ -4,7 +4,7 @@
  * Used when PULSE_MOCK_REDDIT=1 or when the live Reddit API is unreachable.
  * The data is shaped exactly like compressed live data and is always labeled
  * `source: "mock"` so the UI can show a badge — demo data is never passed off
- * as real (see "README Honesty Rules" in PLAN.md).
+ * as real.
  */
 import type { CommentSummary, PostSummary } from "@/lib/agent/schemas";
 

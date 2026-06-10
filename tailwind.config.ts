@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Tailwind is mapped onto the semantic tokens defined in design-system/MASTER.md.
+ * Tailwind is mapped onto the semantic design tokens defined in globals.css.
  * Components must use these token classes (bg-surface, text-secondary, ...)
  * instead of raw hex values, so the theme stays consistent in one place.
  */

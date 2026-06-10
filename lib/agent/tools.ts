@@ -146,7 +146,7 @@ const execEvaluateGap: ToolExecutor<"evaluate_content_gap"> = async (input, ctx)
 };
 
 /* ------------------------------------------------------------------ */
-/* 5. check_subreddit_rules (local hints by design — see PLAN.md)       */
+/* 5. check_subreddit_rules (curated local hints by design)             */
 /* ------------------------------------------------------------------ */
 
 const execCheckRules: ToolExecutor<"check_subreddit_rules"> = async (input) => {
