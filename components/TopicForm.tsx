@@ -76,7 +76,8 @@ export function TopicForm({
 
       {/* The curated whitelist, disclosed as part of the product (ADR-0002) */}
       <div className="mt-4 border-t border-line pt-3">
-        <h3 className="font-mono text-[11px] uppercase tracking-wide text-muted">
+        {/* 11px label: secondary for AA contrast (muted measured 4.19:1 here) */}
+        <h3 className="font-mono text-[11px] uppercase tracking-wide text-secondary">
           Curated subreddits
         </h3>
         <ul className="mt-2 flex flex-wrap gap-1.5">

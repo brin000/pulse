@@ -6,37 +6,36 @@
  * Covered/missing are distinguished by icon + heading, not color alone.
  */
 import type { ContentGap } from "@/lib/agent/schemas";
-import { CheckIcon, LightbulbIcon, XIcon } from "@/components/icons";
+import { CheckIcon, LightbulbIcon } from "@/components/icons";
 
+/* The section heading lives in page.tsx, so the panel renders content only. */
 export function ContentGapPanel({ gap }: { gap: ContentGap }) {
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
-      <h3 className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-secondary">
-        <LightbulbIcon size={14} className="text-accent" />
-        Content gap analysis
-      </h3>
-
-      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <h4 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
-            <XIcon size={12} className="text-muted" /> Already covered
-          </h4>
+          {/* Check = the discussion already has this; quiet on purpose */}
+          <h3 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
+            <CheckIcon size={12} className="text-secondary" /> Already covered
+          </h3>
           <ul className="mt-1.5 flex flex-col gap-1.5">
+            {/* 13px body: secondary keeps AA (muted is reserved for large text) */}
             {gap.coveredAngles.map((angle) => (
-              <li key={angle} className="text-[13px] leading-snug text-muted">
+              <li key={angle} className="text-[13px] leading-snug text-secondary">
                 {angle}
               </li>
             ))}
             {gap.coveredAngles.length === 0 && (
-              <li className="text-[13px] text-muted">Nothing substantial yet.</li>
+              <li className="text-[13px] text-secondary">Nothing substantial yet.</li>
             )}
           </ul>
         </div>
 
         <div>
-          <h4 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
-            <CheckIcon size={12} className="text-success" /> Missing angles
-          </h4>
+          {/* Lightbulb in accent = these gaps are the opportunity Pulse found */}
+          <h3 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
+            <LightbulbIcon size={12} className="text-accent" /> Missing angles
+          </h3>
           <ul className="mt-1.5 flex flex-col gap-1.5">
             {gap.missingAngles.map((angle) => (
               <li key={angle} className="text-[13px] leading-snug text-secondary">

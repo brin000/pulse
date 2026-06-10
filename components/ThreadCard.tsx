@@ -47,7 +47,8 @@ export function ThreadCard({
         </p>
       )}
 
-      <dl className="mt-3 flex gap-4 font-mono text-[12px] text-secondary">
+      {/* tabular-nums: digits keep a fixed width, so meta never shifts as it renders */}
+      <dl className="mt-3 flex gap-4 font-mono text-[12px] tabular-nums text-secondary">
         <div className="flex items-center gap-1">
           <ArrowUpIcon size={12} className="text-muted" />
           <dt className="sr-only">Score</dt>

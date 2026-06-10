@@ -65,6 +65,17 @@ const TYPE_LABEL: Record<TimelineEvent["type"], string> = {
   error: "error",
 };
 
+/**
+ * HH:MM:SS wall-clock for each event. Fixed 24h locale so SSR and client
+ * render identically; tabular-nums in the markup keeps the column stable
+ * while events stream in.
+ */
+function formatTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("en-GB", { hour12: false });
+}
+
 export function Timeline({
   events,
   status,
@@ -86,47 +97,87 @@ export function Timeline({
   }
 
   return (
-    <ol aria-live="polite" className="relative flex flex-col gap-1.5">
-      {events.map((event) => (
-        <li key={event.id} className="animate-fade-up motion-reduce:animate-none">
-          <div className="flex items-start gap-3 rounded-lg border border-line/60 bg-surface px-3 py-2.5">
-            {/* Status icon chip */}
-            <span
-              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${toneClasses(event.type)}`}
+    <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
+      <ol aria-live="polite" className="relative flex flex-col">
+        {events.map((event, i) => {
+          const prev = events[i - 1];
+          // The orchestrator emits decision → tool_start with the same reason;
+          // showing it twice in a row is pure noise, so the tool row drops it.
+          const duplicateReason =
+            event.type === "tool_start" &&
+            prev?.type === "decision" &&
+            prev.reason === event.reason;
+          // Decisions (and run boundaries) are what the user reads; tool
+          // start/result rows are mechanical follow-ups, rendered quieter.
+          const isMajor = !(event.type === "tool_start" || event.type === "tool_result");
+          const isLast = i === events.length - 1 && status !== "running";
+
+          return (
+            <li
+              key={event.id}
+              className="relative animate-fade-up pl-9 motion-reduce:animate-none"
             >
-              {eventIcon(event)}
-            </span>
+              {/* Rail connecting this event to the next one */}
+              {!isLast && (
+                <span
+                  aria-hidden
+                  className="absolute bottom-0 left-[11px] top-7 w-px bg-line/70"
+                />
+              )}
+              {/* Status icon chip (icon + label + color, never color alone) */}
+              <span
+                className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-md border ${toneClasses(event.type)}`}
+              >
+                {eventIcon(event)}
+              </span>
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-mono text-[13px] font-medium text-primary">
-                  {event.title}
-                </span>
-                <span className="font-mono text-[11px] uppercase tracking-wide text-muted">
-                  {TYPE_LABEL[event.type]}
-                </span>
+              <div className={`min-w-0 ${isLast ? "" : "pb-3.5"}`}>
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span
+                    className={`font-mono font-medium ${
+                      isMajor ? "text-[13px] text-primary" : "text-[12px] text-secondary"
+                    }`}
+                  >
+                    {event.title}
+                  </span>
+                  {/* 11-12px meta must use secondary: muted fails AA at this size */}
+                  <span className="font-mono text-[10px] uppercase tracking-wide text-secondary">
+                    {TYPE_LABEL[event.type]}
+                  </span>
+                  <span className="ml-auto font-mono text-[11px] tabular-nums text-secondary">
+                    {formatTime(event.timestamp)}
+                  </span>
+                </div>
+                {/* The model's reason — the "why" that makes this a cockpit, not a spinner */}
+                {event.reason && !duplicateReason && (
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-secondary">
+                    {event.reason}
+                  </p>
+                )}
+                {event.detail && (
+                  <p className="mt-0.5 font-mono text-[12px] tabular-nums text-secondary">
+                    {event.detail}
+                  </p>
+                )}
               </div>
-              {/* The model's reason — the "why" that makes this a cockpit, not a spinner */}
-              {event.reason && (
-                <p className="mt-0.5 text-[13px] leading-relaxed text-secondary">
-                  {event.reason}
-                </p>
-              )}
-              {event.detail && (
-                <p className="mt-0.5 font-mono text-[12px] text-muted">{event.detail}</p>
-              )}
-            </div>
-          </div>
-        </li>
-      ))}
+            </li>
+          );
+        })}
 
-      {/* Live indicator while the run is still streaming */}
-      {status === "running" && (
-        <li className="flex items-center gap-2 px-3 py-2" aria-label="Agent is thinking">
-          <span className="h-2 w-2 animate-pulse-dot rounded-full bg-accent motion-reduce:animate-none" />
-          <span className="font-mono text-[12px] text-secondary">agent is thinking…</span>
-        </li>
-      )}
-    </ol>
+        {/* Live indicator while the run is still streaming */}
+        {status === "running" && (
+          <li className="relative pl-9" aria-label="Agent is thinking">
+            <span
+              aria-hidden
+              className="absolute left-[11px] top-[-14px] h-3.5 w-px bg-line/70"
+            />
+            <span className="absolute left-2 top-1 flex h-2 w-2">
+              <span className="h-2 w-2 animate-pulse-dot rounded-full bg-accent motion-reduce:animate-none" />
+            </span>
+            <span className="font-mono text-[12px] text-secondary">agent is thinking…</span>
+          </li>
+        )}
+      </ol>
+    </div>
   );
 }

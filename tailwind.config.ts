@@ -43,6 +43,8 @@ const config: Config = {
       animation: {
         "fade-up": "fade-up 220ms ease-out both",
         "pulse-dot": "pulse-dot 1.4s ease-in-out infinite",
+        // Single delight point: copy-success check pops in (transform/opacity only)
+        pop: "pop 180ms cubic-bezier(0.22, 1, 0.36, 1) both",
       },
       keyframes: {
         "fade-up": {
@@ -52,6 +54,10 @@ const config: Config = {
         "pulse-dot": {
           "0%, 100%": { opacity: "0.35" },
           "50%": { opacity: "1" },
+        },
+        pop: {
+          from: { opacity: "0", transform: "scale(0.6)" },
+          to: { opacity: "1", transform: "scale(1)" },
         },
       },
     },
