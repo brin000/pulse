@@ -34,6 +34,12 @@ export async function POST(req: Request) {
   }
   const { topic } = parsed.data;
 
+  // Aborts the agent loop when the client goes away, via either path:
+  // the request itself being aborted, or the response stream being cancelled.
+  // Without this the orchestrator would keep burning model tokens for no one.
+  const abort = new AbortController();
+  req.signal.addEventListener("abort", () => abort.abort(), { once: true });
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: string, data: unknown) => {
@@ -48,7 +54,7 @@ export async function POST(req: Request) {
       send("mode", { mockLlm: isMockLlm() });
 
       try {
-        const result = await runAgent(topic, (event) => send("timeline", event));
+        const result = await runAgent(topic, (event) => send("timeline", event), abort.signal);
         send("result", result);
       } catch (err) {
         send("timeline", {
@@ -60,8 +66,15 @@ export async function POST(req: Request) {
         });
       } finally {
         send("done", {});
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Stream already cancelled by the client — closing again would throw.
+        }
       }
+    },
+    cancel() {
+      abort.abort();
     },
   });
 

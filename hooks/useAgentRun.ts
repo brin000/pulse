@@ -10,7 +10,7 @@
  * Runs are session-local by design: state lives in this hook and is gone on
  * refresh. The MVP intentionally has no persistence.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunResult, TimelineEvent } from "@/lib/agent/types";
 
 export type RunStatus = "idle" | "running" | "finished" | "error";
@@ -62,11 +62,20 @@ export function useAgentRun() {
   const [state, setState] = useState<AgentRunState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Abort the in-flight run on unmount so the fetch loop stops reading and
+  // setState is never called on an unmounted component.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const run = useCallback(async (topic: string) => {
     // Cancel any in-flight run before starting a new one.
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // True only while this `run` invocation is the latest one. Without this
+    // guard, events already queued from a superseded run would leak into the
+    // new run's state (mixed topics on the timeline).
+    const isCurrent = () => abortRef.current === controller;
 
     setState({ ...INITIAL, status: "running" });
 
@@ -88,6 +97,7 @@ export function useAgentRun() {
       let buffer = "";
 
       const handleEvent = (event: string, data: unknown) => {
+        if (!isCurrent()) return; // superseded by a newer run — drop the event
         if (event === "mode") {
           setState((s) => ({ ...s, mockLlm: (data as { mockLlm: boolean }).mockLlm }));
         } else if (event === "timeline") {
@@ -111,8 +121,19 @@ export function useAgentRun() {
         buffer += decoder.decode(value, { stream: true });
         buffer = drainSseBuffer(buffer, handleEvent);
       }
+
+      // The stream can end without a `done` event (server crash, proxy cut).
+      // Never leave the UI stuck on "running" in that case.
+      if (isCurrent()) {
+        setState((s) =>
+          s.status === "running"
+            ? { ...s, status: "error", errorMessage: "The stream ended unexpectedly" }
+            : s,
+        );
+      }
     } catch (err) {
       if ((err as Error).name === "AbortError") return; // superseded by a new run
+      if (!isCurrent()) return; // a newer run owns the state now
       setState((s) => ({ ...s, status: "error", errorMessage: String((err as Error).message) }));
     }
   }, []);

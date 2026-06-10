@@ -16,6 +16,13 @@ export function getModel() {
 }
 
 /**
+ * Hard cap per model call. A hung provider connection would otherwise stall
+ * the orchestrator forever and leave the UI stuck on "running" — a timeout
+ * surfaces as a normal decision/tool error the loop already knows how to handle.
+ */
+const LLM_TIMEOUT_MS = 60_000;
+
+/**
  * Schema-constrained generation: the model never returns free-form JSON.
  * Callers still re-validate the result at the runtime boundary (two-layer
  * validation) — this helper is layer one.
@@ -30,6 +37,7 @@ export async function generateStructured<T extends z.ZodTypeAny>(options: {
     schema: options.schema,
     system: options.system,
     prompt: options.prompt,
+    abortSignal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   return object;
 }

@@ -153,15 +153,43 @@ function describeResult(tool: ToolName, output: unknown): string {
 }
 
 /**
+ * Returns why a proposed tool call exceeds its runtime attempt budget, or null
+ * if it is within limits. This is enforced here — not just in the prompt — so
+ * a live model that ignores its instructions still cannot loop past the caps
+ * (the "retry limits live in application code" promise from ADR-0001).
+ */
+function attemptLimitViolation(ctx: AgentContext, toolName: ToolName): string | null {
+  if (toolName === "search_reddit" && ctx.searchAttempts >= AGENT_LIMITS.maxSearchAttempts) {
+    return `search_reddit rejected: attempt limit reached (${ctx.searchAttempts}/${AGENT_LIMITS.maxSearchAttempts}). Work with the posts already in context or finish.`;
+  }
+  if (toolName === "draft_comment_reply" && ctx.draftAttempts >= AGENT_LIMITS.maxDraftAttempts) {
+    return `draft_comment_reply rejected: attempt limit reached (${ctx.draftAttempts}/${AGENT_LIMITS.maxDraftAttempts}). Finish with the existing drafts or fail.`;
+  }
+  return null;
+}
+
+/**
  * Run one complete agent loop for a topic, emitting timeline events along the
  * way. Returns the final RunResult (also emitted by the API route as SSE).
+ * `signal` aborts the loop between steps (e.g. the client disconnected).
  */
-export async function runAgent(topic: string, emit: EmitFn): Promise<RunResult> {
+export async function runAgent(
+  topic: string,
+  emit: EmitFn,
+  signal?: AbortSignal,
+): Promise<RunResult> {
   let ctx = freshContext(topic);
   emit(makeEvent("run_start", "Agent run started", `Topic: "${topic}"`));
 
   let terminated = false;
   while (!terminated) {
+    // Caller cancelled (client disconnect / new run) — stop before spending
+    // another model call. Checked at the top so no step starts after abort.
+    if (signal?.aborted) {
+      emit(makeEvent("error", "Run cancelled", "The client disconnected before the run finished."));
+      break;
+    }
+
     ctx = { ...ctx, steps: ctx.steps + 1 };
 
     /* -- 1. The model proposes one structured decision. ---------------- */
@@ -200,6 +228,14 @@ export async function runAgent(topic: string, emit: EmitFn): Promise<RunResult> 
     if (!toolName || !(toolName in toolInputSchemas)) {
       ctx.failures.push(`Unknown tool "${decision.toolName}"`);
       emit(makeEvent("tool_error", "Invalid decision", undefined, `Unknown tool "${decision.toolName}"`));
+      terminated = shouldTerminate(ctx, decision);
+      continue;
+    }
+    // Runtime attempt budgets — independent of what the prompt asked for.
+    const limitViolation = attemptLimitViolation(ctx, toolName);
+    if (limitViolation) {
+      ctx.failures.push(limitViolation);
+      emit(makeEvent("tool_error", `${toolName} rejected`, undefined, limitViolation));
       terminated = shouldTerminate(ctx, decision);
       continue;
     }

@@ -81,14 +81,14 @@ The model returns a structured `AgentDecision` on each step. Pulse uses Vercel A
 
 ```ts
 type AgentDecision = {
-  action: "call_tool" | "finish" | "retry" | "fail";
+  action: "call_tool" | "finish" | "fail";
   toolName?: ToolName;
   input?: unknown;
   reason: string;
 };
 ```
 
-Even after `generateObject` validates the model output, the orchestrator validates the decision again before execution. Pulse treats model output as untrusted until it passes the runtime boundary.
+Even after `generateObject` validates the model output, the orchestrator re-validates the decision's tool name and input arguments against the tool's own schema before execution — that is where the danger lives. Pulse treats model output as untrusted until it passes the runtime boundary.
 
 The `reason` field drives the streaming timeline. The UI should show not only what the agent did, but why it made each decision.
 
