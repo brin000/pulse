@@ -14,6 +14,7 @@
  *     terminated = shouldTerminate(context)        // bounded, explicit exit
  *   }
  */
+import { randomUUID } from "node:crypto";
 import { AGENT_LIMITS } from "@/lib/config";
 import { decideNextAction } from "@/lib/agent/decide";
 import {
@@ -28,20 +29,21 @@ import type { AgentContext, RunResult, TimelineEvent } from "@/lib/agent/types";
 /** Orchestrator → API route callback; the route forwards events as SSE. */
 export type EmitFn = (event: TimelineEvent) => void;
 
-let eventCounter = 0;
-function makeEvent(
-  type: TimelineEvent["type"],
-  title: string,
-  reason?: string,
-  detail?: string,
-): TimelineEvent {
+/**
+ * Build one timeline event. `tool` is the structured link for tool_* events —
+ * the UI matches on it, while `title` stays free-form display copy.
+ */
+function makeEvent(opts: {
+  type: TimelineEvent["type"];
+  title: string;
+  tool?: ToolName;
+  reason?: string;
+  detail?: string;
+}): TimelineEvent {
   return {
-    id: `evt-${Date.now()}-${eventCounter++}`,
-    type,
-    title,
-    reason,
-    detail,
+    id: `evt-${randomUUID()}`,
     timestamp: new Date().toISOString(),
+    ...opts,
   };
 }
 
@@ -131,7 +133,7 @@ function describeResult(tool: ToolName, output: unknown): string {
     }
     case "evaluate_result_quality": {
       const out = toolOutputSchemas.evaluate_result_quality.parse(output);
-      return `score ${out.score} — ${out.acceptable ? "acceptable" : "below threshold"}`;
+      return `score ${out.score}, ${out.acceptable ? "acceptable" : "below threshold"}`;
     }
     case "get_post_comments": {
       const out = toolOutputSchemas.get_post_comments.parse(output);
@@ -179,14 +181,18 @@ export async function runAgent(
   signal?: AbortSignal,
 ): Promise<RunResult> {
   let ctx = freshContext(topic);
-  emit(makeEvent("run_start", "Agent run started", `Topic: "${topic}"`));
+  // Flipped on any abnormal termination (fail action, decision error,
+  // cancellation, step cap) — becomes the structured RunResult.outcome.
+  let failed = false;
+  emit(makeEvent({ type: "run_start", title: "Agent run started", reason: `Topic: "${topic}"` }));
 
   let terminated = false;
   while (!terminated) {
     // Caller cancelled (client disconnect / new run) — stop before spending
     // another model call. Checked at the top so no step starts after abort.
     if (signal?.aborted) {
-      emit(makeEvent("error", "Run cancelled", "The client disconnected before the run finished."));
+      failed = true;
+      emit(makeEvent({ type: "error", title: "Run cancelled", reason: "The client disconnected before the run finished." }));
       break;
     }
 
@@ -197,27 +203,30 @@ export async function runAgent(
     try {
       decision = await decideNextAction(ctx);
     } catch (err) {
-      emit(makeEvent("error", "Decision failed", String(err)));
+      failed = true;
+      emit(makeEvent({ type: "error", title: "Decision failed", reason: String(err) }));
       break;
     }
     emit(
-      makeEvent(
-        "decision",
-        decision.action === "call_tool"
-          ? `Decided: ${decision.toolName}`
-          : `Decided: ${decision.action}`,
-        decision.reason,
-      ),
+      makeEvent({
+        type: "decision",
+        title:
+          decision.action === "call_tool"
+            ? `Decided: ${decision.toolName}`
+            : `Decided: ${decision.action}`,
+        reason: decision.reason,
+      }),
     );
 
     if (decision.action !== "call_tool") {
       // finish / fail — emit the terminal event and stop.
+      if (decision.action === "fail") failed = true;
       emit(
-        makeEvent(
-          decision.action === "finish" ? "finish" : "error",
-          decision.action === "finish" ? "Run finished" : "Run failed",
-          decision.reason,
-        ),
+        makeEvent({
+          type: decision.action === "finish" ? "finish" : "error",
+          title: decision.action === "finish" ? "Run finished" : "Run failed",
+          reason: decision.reason,
+        }),
       );
       terminated = true;
       continue;
@@ -227,7 +236,7 @@ export async function runAgent(
     const toolName = decision.toolName as ToolName | undefined;
     if (!toolName || !(toolName in toolInputSchemas)) {
       ctx.failures.push(`Unknown tool "${decision.toolName}"`);
-      emit(makeEvent("tool_error", "Invalid decision", undefined, `Unknown tool "${decision.toolName}"`));
+      emit(makeEvent({ type: "tool_error", title: "Invalid decision", detail: `Unknown tool "${decision.toolName}"` }));
       terminated = shouldTerminate(ctx, decision);
       continue;
     }
@@ -235,7 +244,7 @@ export async function runAgent(
     const limitViolation = attemptLimitViolation(ctx, toolName);
     if (limitViolation) {
       ctx.failures.push(limitViolation);
-      emit(makeEvent("tool_error", `${toolName} rejected`, undefined, limitViolation));
+      emit(makeEvent({ type: "tool_error", title: `${toolName} rejected`, tool: toolName, detail: limitViolation }));
       terminated = shouldTerminate(ctx, decision);
       continue;
     }
@@ -244,13 +253,13 @@ export async function runAgent(
       // The failure is stored in context so the model can correct itself next step.
       const msg = `Input for ${toolName} failed validation: ${parsedInput.error.issues[0]?.message}`;
       ctx.failures.push(msg);
-      emit(makeEvent("tool_error", `${toolName} rejected`, undefined, msg));
+      emit(makeEvent({ type: "tool_error", title: `${toolName} rejected`, tool: toolName, detail: msg }));
       terminated = shouldTerminate(ctx, decision);
       continue;
     }
 
     /* -- 3. Execute, validate output, fold into context. ---------------- */
-    emit(makeEvent("tool_start", toolName, decision.reason));
+    emit(makeEvent({ type: "tool_start", title: toolName, tool: toolName, reason: decision.reason }));
     try {
       const executor = toolExecutors[toolName] as (
         input: unknown,
@@ -263,20 +272,22 @@ export async function runAgent(
       }
 
       ctx = compressAndUpdateContext(ctx, toolName, parsedInput.data, parsedOutput.data);
-      emit(makeEvent("tool_result", toolName, undefined, describeResult(toolName, parsedOutput.data)));
+      emit(makeEvent({ type: "tool_result", title: toolName, tool: toolName, detail: describeResult(toolName, parsedOutput.data) }));
     } catch (err) {
       ctx.failures.push(`${toolName} failed: ${String(err)}`);
-      emit(makeEvent("tool_error", `${toolName} failed`, undefined, String(err)));
+      emit(makeEvent({ type: "tool_error", title: `${toolName} failed`, tool: toolName, detail: String(err) }));
     }
 
     /* -- 4. Bounded exit check. ------------------------------------------ */
     terminated = shouldTerminate(ctx, decision);
     if (terminated && ctx.steps >= AGENT_LIMITS.maxSteps) {
-      emit(makeEvent("error", "Step limit reached", `Stopped after ${ctx.steps} steps (cap: ${AGENT_LIMITS.maxSteps}).`));
+      failed = true;
+      emit(makeEvent({ type: "error", title: "Step limit reached", reason: `Stopped after ${ctx.steps} steps (cap: ${AGENT_LIMITS.maxSteps}).` }));
     }
   }
 
   return {
+    outcome: failed ? "failed" : "success",
     topic: ctx.topic,
     selectedPost: ctx.selectedPost,
     gap: ctx.gap,

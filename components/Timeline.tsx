@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * The agent execution timeline — the hero element of the cockpit.
+ * The agent execution timeline — observability rail during a run.
  *
  * Each entry shows WHAT the agent did (mono tool/action name) and WHY
  * (the model's `reason`). Status is conveyed by icon + label + color
  * together, never color alone (accessibility rule `color-not-only`).
  * `aria-live="polite"` lets screen readers follow progress.
  */
+import type { ReactNode } from "react";
 import type { TimelineEvent } from "@/lib/agent/types";
+import type { ToolName } from "@/lib/agent/schemas";
 import type { RunStatus } from "@/hooks/useAgentRun";
 import {
   AlertIcon,
@@ -23,15 +25,18 @@ import {
   ShieldIcon,
 } from "@/components/icons";
 
-/** Map tool names / event types to a representative icon. */
+/** One representative icon per tool, keyed by the event's structured `tool` field. */
+const TOOL_ICONS: Record<ToolName, ReactNode> = {
+  search_reddit: <SearchIcon size={14} />,
+  evaluate_result_quality: <GaugeIcon size={14} />,
+  get_post_comments: <MessagesIcon size={14} />,
+  evaluate_content_gap: <LightbulbIcon size={14} />,
+  check_subreddit_rules: <ShieldIcon size={14} />,
+  draft_comment_reply: <PenIcon size={14} />,
+};
+
 function eventIcon(event: TimelineEvent) {
-  const title = event.title.toLowerCase();
-  if (title.includes("search_reddit")) return <SearchIcon size={14} />;
-  if (title.includes("evaluate_result_quality")) return <GaugeIcon size={14} />;
-  if (title.includes("get_post_comments")) return <MessagesIcon size={14} />;
-  if (title.includes("evaluate_content_gap")) return <LightbulbIcon size={14} />;
-  if (title.includes("check_subreddit_rules")) return <ShieldIcon size={14} />;
-  if (title.includes("draft_comment_reply")) return <PenIcon size={14} />;
+  if (event.tool) return TOOL_ICONS[event.tool];
   if (event.type === "decision") return <BrainIcon size={14} />;
   if (event.type === "finish") return <CheckIcon size={14} />;
   if (event.type === "error" || event.type === "tool_error") return <AlertIcon size={14} />;
@@ -84,54 +89,52 @@ export function Timeline({
   status: RunStatus;
 }) {
   if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line bg-surface/50 px-6 py-16 text-center">
-        <BrainIcon size={28} className="text-muted" />
-        <p className="text-sm text-secondary">
-          Run the agent to watch its decisions stream in live —<br />
-          every step shows <span className="text-primary">what</span> it did and{" "}
-          <span className="text-primary">why</span>.
-        </p>
-      </div>
-    );
+    if (status === "running") {
+      return (
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-6">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent/30 border-t-accent motion-reduce:animate-none" />
+          <p className="text-[13px] text-secondary">Agent starting…</p>
+        </div>
+      );
+    }
+    return null;
   }
+
+  // Decisions carry the "why"; tool_start duplicates the same reason. Results
+  // stay as compact one-liners so the rail reads decision → outcome.
+  const visibleEvents = events.filter((e) => e.type !== "tool_start");
 
   return (
     <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
       <ol aria-live="polite" className="relative flex flex-col">
-        {events.map((event, i) => {
-          const prev = events[i - 1];
-          // The orchestrator emits decision → tool_start with the same reason;
-          // showing it twice in a row is pure noise, so the tool row drops it.
-          const duplicateReason =
-            event.type === "tool_start" &&
-            prev?.type === "decision" &&
-            prev.reason === event.reason;
-          // Decisions (and run boundaries) are what the user reads; tool
-          // start/result rows are mechanical follow-ups, rendered quieter.
-          const isMajor = !(event.type === "tool_start" || event.type === "tool_result");
-          const isLast = i === events.length - 1 && status !== "running";
+        {visibleEvents.map((event, i) => {
+          const isMajor = event.type !== "tool_result";
+          const isLast = i === visibleEvents.length - 1 && status !== "running";
 
           return (
             <li
               key={event.id}
-              className="relative animate-fade-up pl-9 motion-reduce:animate-none"
+              className={`relative animate-fade-up motion-reduce:animate-none ${
+                isMajor ? "pl-9" : "pl-7"
+              }`}
             >
-              {/* Rail connecting this event to the next one */}
               {!isLast && (
                 <span
                   aria-hidden
-                  className="absolute bottom-0 left-[11px] top-7 w-px bg-line/70"
+                  className={`absolute bottom-0 w-px bg-line/70 ${
+                    isMajor ? "left-[11px] top-7" : "left-[7px] top-5"
+                  }`}
                 />
               )}
-              {/* Status icon chip (icon + label + color, never color alone) */}
               <span
-                className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-md border ${toneClasses(event.type)}`}
+                className={`absolute left-0 top-0 flex items-center justify-center rounded-md border ${toneClasses(event.type)} ${
+                  isMajor ? "h-6 w-6" : "h-4 w-4"
+                }`}
               >
-                {eventIcon(event)}
+                {isMajor ? eventIcon(event) : <CheckIcon size={10} />}
               </span>
 
-              <div className={`min-w-0 ${isLast ? "" : "pb-3.5"}`}>
+              <div className={`min-w-0 ${isLast ? "" : isMajor ? "pb-3.5" : "pb-2"}`}>
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span
                     className={`font-mono font-medium ${
@@ -148,14 +151,17 @@ export function Timeline({
                     {formatTime(event.timestamp)}
                   </span>
                 </div>
-                {/* The model's reason — the "why" that makes this a cockpit, not a spinner */}
-                {event.reason && !duplicateReason && (
+                {event.reason && isMajor && (
                   <p className="mt-0.5 text-[13px] leading-relaxed text-secondary">
                     {event.reason}
                   </p>
                 )}
                 {event.detail && (
-                  <p className="mt-0.5 font-mono text-[12px] tabular-nums text-secondary">
+                  <p
+                    className={`mt-0.5 font-mono tabular-nums text-secondary ${
+                      isMajor ? "text-[12px]" : "text-[11px]"
+                    }`}
+                  >
                     {event.detail}
                   </p>
                 )}

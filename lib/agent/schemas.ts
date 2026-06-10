@@ -62,9 +62,11 @@ export const toolInputSchemas = {
     /** Constrained to the curated whitelist — invalid subreddits cannot pass. */
     subreddits: z.array(subredditSchema).min(1),
   }),
-  evaluate_result_quality: z.object({
-    posts: z.array(postSummarySchema),
-  }),
+  // Takes no input on purpose: the executor scores the posts already in the
+  // run context. Making the model echo full post objects back would waste
+  // tokens and invite lossy/hallucinated copies of real data. `.default({})`
+  // also accepts a decision that omits `input` entirely.
+  evaluate_result_quality: z.object({}).default({}),
   get_post_comments: z.object({
     postId: z.string().min(1),
   }),

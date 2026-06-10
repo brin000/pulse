@@ -9,6 +9,7 @@ import type {
   PostSummary,
   QualityEvaluation,
   SubredditRules,
+  ToolName,
 } from "@/lib/agent/schemas";
 
 /**
@@ -53,6 +54,12 @@ export interface TimelineEvent {
     | "error";
   /** Short human-readable headline, e.g. "search_reddit". */
   title: string;
+  /**
+   * Structured link to the tool a tool_* event belongs to. The UI matches on
+   * this field (icons, pipeline progress) — titles are display copy only and
+   * must never be parsed.
+   */
+  tool?: ToolName;
   /** The model's `reason` — the "why" behind the step. */
   reason?: string;
   /** Small structured payload for richer rendering (counts, scores, ...). */
@@ -62,6 +69,13 @@ export interface TimelineEvent {
 
 /** Final payload sent on the `result` SSE event when a run completes. */
 export interface RunResult {
+  /**
+   * Terminal verdict of the run. "failed" covers the explicit `fail` action,
+   * decision errors, cancellation and the step cap — anything that ended the
+   * loop abnormally. A finish with zero drafts still counts as "success";
+   * the UI explains the empty result separately.
+   */
+  outcome: "success" | "failed";
   topic: string;
   selectedPost: PostSummary | null;
   gap: ContentGap | null;

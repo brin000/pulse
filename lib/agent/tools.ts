@@ -32,13 +32,15 @@ type ToolExecutor<T extends ToolName> = (
   ctx: AgentContext,
 ) => Promise<ToolOutput<T>>;
 
-/** Resolve a post the model referenced by id; throws a clear error if stale. */
+/**
+ * Resolve a post the model referenced by id; throws a clear error if stale.
+ * Checks the selected post too: a retried search may have evicted it from
+ * `ctx.posts` while it remains the thread the run is committed to.
+ */
 function requirePost(ctx: AgentContext, postId: string): PostSummary {
-  const post = ctx.posts.find((p) => p.id === postId) ?? ctx.selectedPost;
-  if (!post || (post.id !== postId && ctx.selectedPost?.id !== postId)) {
-    throw new Error(`Post "${postId}" is not in the current context`);
-  }
-  return post.id === postId ? post : (ctx.selectedPost as PostSummary);
+  const post = [...ctx.posts, ctx.selectedPost].find((p) => p?.id === postId);
+  if (!post) throw new Error(`Post "${postId}" is not in the current context`);
+  return post;
 }
 
 /* ------------------------------------------------------------------ */
@@ -55,20 +57,22 @@ const execSearchReddit: ToolExecutor<"search_reddit"> = async (input) => {
 /* ------------------------------------------------------------------ */
 
 const execEvaluateQuality: ToolExecutor<"evaluate_result_quality"> = async (
-  input,
+  _input,
+  ctx,
 ) => {
-  if (input.posts.length === 0) {
+  // Scores the posts already in context — the model never echoes data back.
+  if (ctx.posts.length === 0) {
     return {
       score: 0,
       acceptable: false,
       bestPostId: null,
-      reasoning: "No posts to evaluate — the search returned nothing.",
+      reasoning: "No posts to evaluate. The search returned nothing.",
     };
   }
 
   // Score each post on recency (the "discussion window") and engagement.
   // A thread older than ~48h is usually too cold to join meaningfully.
-  const scored = input.posts.map((p) => {
+  const scored = ctx.posts.map((p) => {
     const recency = Math.max(0, 1 - p.ageHours / 48); // 1 = brand new, 0 = 48h+
     const engagement = Math.min(1, (p.score + p.numComments * 3) / 200);
     return { post: p, score: recency * 0.6 + engagement * 0.4 };
@@ -85,7 +89,7 @@ const execEvaluateQuality: ToolExecutor<"evaluate_result_quality"> = async (
     reasoning: acceptable
       ? `Best candidate "${best.post.title.slice(0, 60)}..." is ${Math.round(
           best.post.ageHours,
-        )}h old with ${best.post.numComments} comments — still active enough to join.`
+        )}h old with ${best.post.numComments} comments, still active enough to join.`
       : `Top result only scored ${score} (threshold ${AGENT_LIMITS.qualityThreshold}); results are too old or too quiet.`,
   };
 };
@@ -165,7 +169,7 @@ const execDraftReply: ToolExecutor<"draft_comment_reply"> = async (input, ctx) =
     const drafts: Draft[] = [
       {
         tone: "practical",
-        text: `The loop itself is the easy part — what made the difference for me was moving control out of the prompt and into the runtime. Each step the model returns one structured decision (action + tool + reason), the runtime validates it against a schema before anything executes, and a bounded retry/termination policy decides whether to continue. Once the "why" of each step is streamed to the UI, debugging stops being guesswork.`,
+        text: `The loop itself is the easy part. What made the difference for me was moving control out of the prompt and into the runtime. Each step the model returns one structured decision (action + tool + reason), the runtime validates it against a schema before anything executes, and a bounded retry/termination policy decides whether to continue. Once the "why" of each step is streamed to the UI, debugging stops being guesswork.`,
         selfCheck: { toneMatch: true, useful: true, spamRisk: "low" },
       },
       {

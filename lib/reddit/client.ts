@@ -95,8 +95,10 @@ export async function searchReddit(
     // Newest-ish and most engaged first, capped for token budget.
     posts.sort((a, b) => b.score + b.numComments * 2 - (a.score + a.numComments * 2));
     return { posts: posts.slice(0, AGENT_LIMITS.maxPostsInContext * 2), source: "live" };
-  } catch {
+  } catch (err) {
     // Network failure must not kill the demo — fall back and disclose it.
+    // Logged so "why is everything mock data?" is answerable from the server logs.
+    console.warn("[reddit] search failed, falling back to mock data:", err);
     return { posts: filterMockPosts(keywords, subreddits), source: "mock" };
   }
 }
@@ -122,7 +124,8 @@ export async function getPostComments(postId: string): Promise<CommentsResult> {
         snippet: String(c.data.body).replace(/\s+/g, " ").slice(0, 240),
       }));
     return { comments, source: "live" };
-  } catch {
+  } catch (err) {
+    console.warn(`[reddit] comments fetch failed for "${postId}", falling back to mock data:`, err);
     return { comments: MOCK_COMMENTS[postId] ?? [], source: "mock" };
   }
 }

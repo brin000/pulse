@@ -24,7 +24,7 @@ export const MOCK_POSTS: PostSummary[] = [
   {
     id: "mock-2",
     subreddit: "nextjs",
-    title: "Streaming tool-call progress to the client — SSE or the AI SDK hooks?",
+    title: "Streaming tool-call progress to the client: SSE or the AI SDK hooks?",
     score: 156,
     numComments: 34,
     ageHours: 9,
@@ -87,7 +87,7 @@ export const MOCK_COMMENTS: Record<string, CommentSummary[]> = {
     {
       author: "app_router_dev",
       score: 19,
-      snippet: "ReadableStream from a route handler works fine — just remember the headers.",
+      snippet: "ReadableStream from a route handler works fine. Just remember the headers.",
     },
   ],
   "mock-3": [

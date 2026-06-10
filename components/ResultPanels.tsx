@@ -1,0 +1,137 @@
+"use client";
+
+/**
+ * The three result panels of a run: reviewable drafts, selected thread,
+ * and content gap.
+ *
+ * Visibility and ordering follow the run lifecycle:
+ * - idle:     hidden — the OutcomePreview owns the stage
+ * - running:  skeleton placeholders in pipeline order (thread → gap → drafts)
+ * - finished: real content, drafts first (the deliverable the user came for)
+ */
+import type { ReactNode } from "react";
+import type { RunResult } from "@/lib/agent/types";
+import type { RunStatus } from "@/hooks/useAgentRun";
+import { ThreadCard } from "@/components/ThreadCard";
+import { ContentGapPanel } from "@/components/ContentGapPanel";
+import { DraftsPanel } from "@/components/DraftsPanel";
+
+/** Per-position stagger so panels fade in top-to-bottom regardless of order. */
+const DELAY_CLASSES = [
+  "[animation-delay:50ms]",
+  "[animation-delay:100ms]",
+  "[animation-delay:150ms]",
+] as const;
+
+/**
+ * Pre-result placeholder: a pulsing skeleton while the agent runs, or a
+ * dashed hint box describing what will land here once a run starts.
+ */
+function PanelPlaceholder({ hint, loading }: { hint: string; loading: boolean }) {
+  if (loading) {
+    return (
+      <div
+        aria-hidden
+        className="animate-pulse rounded-xl border border-line bg-surface p-4 motion-reduce:animate-none"
+      >
+        <div className="h-3 w-1/3 rounded bg-raised" />
+        <div className="mt-3 h-3 w-5/6 rounded bg-raised" />
+        <div className="mt-2 h-3 w-2/3 rounded bg-raised" />
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-dashed border-line bg-surface/50 px-4 py-5">
+      <p className="text-[12px] leading-relaxed text-secondary">{hint}</p>
+    </div>
+  );
+}
+
+interface Panel {
+  key: string;
+  title: string;
+  content: ReactNode;
+}
+
+export function ResultPanels({
+  status,
+  result,
+}: {
+  status: RunStatus;
+  result: RunResult | null;
+}) {
+  if (status === "idle") return null;
+
+  const running = status === "running";
+  const finished = status === "finished";
+  const terminal = finished || status === "error";
+
+  const draftsPanel: Panel = {
+    key: "drafts",
+    title: "Reviewable drafts",
+    content:
+      result && result.drafts.length > 0 ? (
+        <DraftsPanel drafts={result.drafts} rules={result.rules} />
+      ) : terminal && result ? (
+        // The run ended without anything publishable — say so honestly and
+        // point at the execution log for the "why".
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <p className="text-[13px] leading-relaxed text-secondary">
+            {finished
+              ? "The agent finished without a draft worth showing. Expand the execution log below to see why. Try a broader topic."
+              : "The run ended with errors before producing a draft. Expand the execution log below to see what happened."}
+          </p>
+        </div>
+      ) : (
+        <PanelPlaceholder
+          hint="Three tone variants you review, edit and copy. Pulse never posts."
+          loading={running}
+        />
+      ),
+  };
+
+  const threadPanel: Panel = {
+    key: "thread",
+    title: "Selected thread",
+    content: result?.selectedPost ? (
+      <ThreadCard post={result.selectedPost} dataSource={result.dataSource} />
+    ) : (
+      <PanelPlaceholder
+        hint="The discussion the agent commits to replying in lands here."
+        loading={running}
+      />
+    ),
+  };
+
+  const gapPanel: Panel = {
+    key: "gap",
+    title: "Content gap",
+    content: result?.gap ? (
+      <ContentGapPanel gap={result.gap} />
+    ) : (
+      <PanelPlaceholder
+        hint="What the thread already covers vs the angle worth adding."
+        loading={running}
+      />
+    ),
+  };
+
+  // Finished runs lead with the deliverable; running/error keep pipeline order.
+  const ordered = finished
+    ? [draftsPanel, threadPanel, gapPanel]
+    : [threadPanel, gapPanel, draftsPanel];
+
+  return (
+    <div className="flex animate-fade-up flex-col gap-4 motion-reduce:animate-none">
+      {ordered.map((panel, i) => (
+        <section
+          key={panel.key}
+          className={`animate-fade-up motion-reduce:animate-none ${DELAY_CLASSES[i]}`}
+        >
+          <h2 className="mb-2 text-base font-semibold text-primary">{panel.title}</h2>
+          {panel.content}
+        </section>
+      ))}
+    </div>
+  );
+}

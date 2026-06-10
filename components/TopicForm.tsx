@@ -59,7 +59,7 @@ export function TopicForm({
       <button
         type="submit"
         disabled={running || topic.trim().length < 3}
-        className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-accent-strong font-semibold text-bg transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="group mt-3 flex min-h-[44px] w-full items-center justify-center gap-2.5 rounded-full bg-accent-strong pl-2 pr-5 font-semibold text-bg transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         {running ? (
           <>
@@ -68,7 +68,9 @@ export function TopicForm({
           </>
         ) : (
           <>
-            <PlayIcon size={14} />
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-bg/20 transition-colors group-hover:bg-bg/30">
+              <PlayIcon size={14} />
+            </span>
             <span className="text-[14px]">Run agent</span>
           </>
         )}
@@ -76,10 +78,7 @@ export function TopicForm({
 
       {/* The curated whitelist, disclosed as part of the product (ADR-0002) */}
       <div className="mt-4 border-t border-line pt-3">
-        {/* 11px label: secondary for AA contrast (muted measured 4.19:1 here) */}
-        <h3 className="font-mono text-[11px] uppercase tracking-wide text-secondary">
-          Curated subreddits
-        </h3>
+        <h3 className="text-[12px] font-medium text-secondary">Curated subreddits</h3>
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {SUBREDDIT_WHITELIST.map((sub) => (
             <li

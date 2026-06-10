@@ -105,12 +105,11 @@ export function useAgentRun() {
         } else if (event === "result") {
           setState((s) => ({ ...s, result: data as RunResult }));
         } else if (event === "done") {
-          setState((s) => ({
-            ...s,
-            // A run with zero drafts still "finished" — the UI explains why
-            // via the timeline (e.g. search exhausted, agent failed honestly).
-            status: "finished",
-          }));
+          // The server states the verdict explicitly — no need to infer it
+          // from the event log. A finish with zero drafts is still "finished";
+          // the UI explains the empty result separately.
+          const failed = (data as { outcome?: string }).outcome === "failed";
+          setState((s) => ({ ...s, status: failed ? "error" : "finished" }));
         }
       };
 

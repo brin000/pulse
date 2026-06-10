@@ -135,7 +135,7 @@ export function DraftsPanel({
       {rules && (
         <div className="mt-4 border-t border-line pt-3">
           {/* Small meta text uses secondary so it stays AA-readable on surface */}
-          <h3 className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-secondary">
+          <h3 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
             <ShieldIcon size={12} />
             r/{rules.subreddit} norms applied
           </h3>

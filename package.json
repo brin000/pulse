@@ -5,6 +5,7 @@
   "description": "Pulse — an on-demand AI agent that helps developers show up in the right Reddit conversations, at the right time, with something worth saying.",
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

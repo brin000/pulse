@@ -7,7 +7,7 @@
  *
  *   event: timeline  — one TimelineEvent per orchestrator step
  *   event: result    — the final RunResult (selected thread, gap, drafts)
- *   event: done      — stream end marker
+ *   event: done      — stream end marker, carries { outcome: "success" | "failed" }
  */
 import { z } from "zod";
 import { runAgent } from "@/lib/agent/orchestrator";
@@ -53,8 +53,11 @@ export async function POST(req: Request) {
       // Tell the UI up front whether this run uses mock or live LLM decisions.
       send("mode", { mockLlm: isMockLlm() });
 
+      // Pessimistic default: only a run that returns normally flips it.
+      let outcome: "success" | "failed" = "failed";
       try {
         const result = await runAgent(topic, (event) => send("timeline", event), abort.signal);
+        outcome = result.outcome;
         send("result", result);
       } catch (err) {
         send("timeline", {
@@ -65,7 +68,7 @@ export async function POST(req: Request) {
           timestamp: new Date().toISOString(),
         });
       } finally {
-        send("done", {});
+        send("done", { outcome });
         try {
           controller.close();
         } catch {

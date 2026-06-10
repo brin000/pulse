@@ -71,6 +71,8 @@ async function decideWithModel(ctx: AgentContext): Promise<AgentDecision> {
     system: [
       "You are the decision core of Pulse, an agent that finds a live Reddit discussion worth joining and drafts comment replies.",
       `Available tools: ${TOOL_NAMES.join(", ")}.`,
+      // The decision schema can't describe per-tool inputs, so spell them out.
+      "Tool inputs: search_reddit {keywords: string[], subreddits: string[]} · evaluate_result_quality {} (scores posts already in context) · get_post_comments {postId} · evaluate_content_gap {postId} · check_subreddit_rules {subreddit} · draft_comment_reply {postId, angle}.",
       `Allowed subreddits: ${SUBREDDIT_WHITELIST.join(", ")}.`,
       "Typical flow: search_reddit -> evaluate_result_quality -> (retry search with refined keywords if low quality) -> get_post_comments on the best post -> evaluate_content_gap -> check_subreddit_rules -> draft_comment_reply -> finish.",
       "Rules:",
@@ -111,7 +113,7 @@ function decideMock(ctx: AgentContext): AgentDecision {
       toolName: "search_reddit",
       input: { keywords: keywordsFor(ctx), subreddits: [...SUBREDDIT_WHITELIST] },
       reason: retrying
-        ? `Previous results scored ${ctx.quality?.score ?? 0} (below threshold) — retrying with broader keywords.`
+        ? `Previous results scored ${ctx.quality?.score ?? 0} (below threshold). Retrying with broader keywords.`
         : `Searching the curated subreddits for active discussions about "${ctx.topic}".`,
     };
   }
@@ -121,7 +123,7 @@ function decideMock(ctx: AgentContext): AgentDecision {
     return {
       action: "call_tool",
       toolName: "evaluate_result_quality",
-      input: { posts: ctx.posts },
+      input: {},
       reason: `Scoring ${ctx.posts.length} posts on recency and engagement to find a thread still worth joining.`,
     };
   }
@@ -142,8 +144,19 @@ function decideMock(ctx: AgentContext): AgentDecision {
       toolName: "get_post_comments",
       input: { postId: bestId },
       reason: ctx.quality?.acceptable
-        ? "Best candidate passed the quality bar — reading its top comments to understand the discussion."
+        ? "Best candidate passed the quality bar. Reading its top comments to understand the discussion."
         : "Retries exhausted; proceeding with the strongest available thread (best effort).",
+    };
+  }
+
+  // Branches 5-7 all require a committed thread. Selection can stay null in
+  // edge cases (e.g. the post id vanished from context between steps), so
+  // narrow it once here instead of asserting non-null in every branch.
+  const selected = ctx.selectedPost;
+  if (!selected) {
+    return {
+      action: "fail",
+      reason: "Lost track of the selected thread; cannot continue the pipeline.",
     };
   }
 
@@ -152,8 +165,8 @@ function decideMock(ctx: AgentContext): AgentDecision {
     return {
       action: "call_tool",
       toolName: "evaluate_content_gap",
-      input: { postId: ctx.selectedPost!.id },
-      reason: "Comments loaded — analyzing which useful angles are already covered and what is missing.",
+      input: { postId: selected.id },
+      reason: "Comments loaded. Analyzing which useful angles are already covered and what is missing.",
     };
   }
 
@@ -162,8 +175,8 @@ function decideMock(ctx: AgentContext): AgentDecision {
     return {
       action: "call_tool",
       toolName: "check_subreddit_rules",
-      input: { subreddit: ctx.selectedPost!.subreddit },
-      reason: `Checking r/${ctx.selectedPost!.subreddit} tone guidelines so drafts match community norms.`,
+      input: { subreddit: selected.subreddit },
+      reason: `Checking r/${selected.subreddit} tone guidelines so drafts match community norms.`,
     };
   }
 
@@ -172,7 +185,7 @@ function decideMock(ctx: AgentContext): AgentDecision {
     return {
       action: "call_tool",
       toolName: "draft_comment_reply",
-      input: { postId: ctx.selectedPost!.id, angle: ctx.gap.recommendedAngle },
+      input: { postId: selected.id, angle: ctx.gap.recommendedAngle },
       reason: `Drafting replies that take the missing angle: "${ctx.gap.recommendedAngle.slice(0, 80)}...".`,
     };
   }
@@ -181,7 +194,7 @@ function decideMock(ctx: AgentContext): AgentDecision {
   if (ctx.drafts.length > 0) {
     return {
       action: "finish",
-      reason: `${ctx.drafts.length} drafts pass the self-check — ready for human review.`,
+      reason: `${ctx.drafts.length} drafts pass the self-check. Ready for human review.`,
     };
   }
 
