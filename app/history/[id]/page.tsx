@@ -13,7 +13,13 @@ import { notFound } from "next/navigation";
 import { getRun } from "@/lib/db";
 import { ResultPanels } from "@/components/ResultPanels";
 import { TimelineCollapsible } from "@/components/TimelineCollapsible";
-import { GoalBadge, MockBadge, OutcomeBadge, summarizeOutput } from "@/components/RunBadges";
+import {
+  CronBadge,
+  GoalBadge,
+  MockBadge,
+  OutcomeBadge,
+  summarizeOutput,
+} from "@/components/RunBadges";
 import { ArrowLeftIcon } from "@/components/icons";
 
 export const metadata: Metadata = { title: "Run detail - Pulse" };
@@ -56,6 +62,7 @@ export default async function RunDetailPage({ params }: { params: { id: string }
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <OutcomeBadge outcome={run.outcome} />
           <GoalBadge goal={run.goal} />
+          {run.source === "cron" && <CronBadge />}
           {run.mockLlm && <MockBadge />}
           <span className="font-mono text-[11px] tabular-nums text-secondary">
             {summarizeOutput(run.result)}

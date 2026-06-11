@@ -9,27 +9,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { listRuns } from "@/lib/db";
-import { GoalBadge, MockBadge, OutcomeBadge, summarizeOutput } from "@/components/RunBadges";
+import { relativeTime } from "@/lib/time";
+import {
+  CronBadge,
+  GoalBadge,
+  MockBadge,
+  OutcomeBadge,
+  summarizeOutput,
+} from "@/components/RunBadges";
 import { ArrowLeftIcon, PlayIcon } from "@/components/icons";
 
 export const metadata: Metadata = { title: "Run history - Pulse" };
 
 // Always reflect the latest runs; this page must never be statically cached.
 export const dynamic = "force-dynamic";
-
-/**
- * Compact relative age ("3m ago"). Computed server-side at request time —
- * good enough for a history list, where rows age in minutes, not seconds.
- */
-function relativeTime(epochMs: number): string {
-  const diffSec = Math.max(0, Math.round((Date.now() - epochMs) / 1000));
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.round(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${Math.round(diffHours / 24)}d ago`;
-}
 
 function EmptyState() {
   return (
@@ -97,6 +90,7 @@ export default async function HistoryPage() {
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <OutcomeBadge outcome={run.outcome} />
                   <GoalBadge goal={run.goal} />
+                  {run.source === "cron" && <CronBadge />}
                   {run.mockLlm && <MockBadge />}
                   <span className="font-mono text-[11px] tabular-nums text-secondary">
                     {summarizeOutput(run.result)}

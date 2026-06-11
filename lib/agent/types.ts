@@ -51,6 +51,13 @@ export interface AgentContext {
   dataSource: "live" | "mock" | null;
   /** Validation/tool failures, kept so the model can react to them. */
   failures: string[];
+  /**
+   * Post ids the run must never surface (cron dedup: threads already
+   * recommended for this topic). Applied inside the search_reddit executor —
+   * BEFORE quality scoring — so an excluded post can't even become a
+   * candidate. Empty/undefined for manual cockpit runs.
+   */
+  excludePostIds?: string[];
 }
 
 /** A single entry on the streaming timeline. One SSE message per event. */

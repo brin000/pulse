@@ -185,3 +185,40 @@ export function HistoryIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** Radar sweep — monitored topics / subscriptions. */
+export function RadarIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M19.07 4.93A10 10 0 0 0 6.99 3.34" />
+      <path d="M4 6h.01" />
+      <path d="M2.29 9.62a10 10 0 1 0 19.02-1.27" />
+      <path d="M16.24 7.76a6 6 0 1 0 1.07 5.94" />
+      <path d="M12 18h.01" />
+      <path d="M17.99 11.66a6 6 0 0 1-2.22 4.75" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="m13.41 10.59 5.66-5.66" />
+    </svg>
+  );
+}
+
+/** Bell — notification inbox. */
+export function BellIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+/** Trash can — destructive remove actions. */
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}

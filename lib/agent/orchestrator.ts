@@ -48,11 +48,17 @@ function makeEvent(opts: {
   };
 }
 
-function freshContext(topic: string, mockLlm: boolean, goal: RunGoal): AgentContext {
+function freshContext(
+  topic: string,
+  mockLlm: boolean,
+  goal: RunGoal,
+  excludePostIds?: string[],
+): AgentContext {
   return {
     topic,
     goal,
     mockLlm,
+    excludePostIds,
     steps: 0,
     searchAttempts: 0,
     draftAttempts: 0,
@@ -197,6 +203,8 @@ function attemptLimitViolation(ctx: AgentContext, toolName: ToolName): string | 
  * `mockLlm` pins the decision mode for the whole run (route-level policy).
  * `goal` selects the pipeline (reply / post / auto-pivot); defaults to auto
  * so older clients that send no goal keep working.
+ * `excludePostIds` removes already-recommended threads before scoring
+ * (cron dedup — see AgentContext.excludePostIds).
  */
 export async function runAgent(
   topic: string,
@@ -204,8 +212,9 @@ export async function runAgent(
   signal?: AbortSignal,
   mockLlm: boolean = false,
   goal: RunGoal = "auto",
+  excludePostIds?: string[],
 ): Promise<RunResult> {
-  let ctx = freshContext(topic, mockLlm, goal);
+  let ctx = freshContext(topic, mockLlm, goal, excludePostIds);
   // Flipped on any abnormal termination (fail action, decision error,
   // cancellation, step cap) — becomes the structured RunResult.outcome.
   let failed = false;

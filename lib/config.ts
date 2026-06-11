@@ -70,6 +70,20 @@ export const AGENT_LIMITS = {
   maxPostsInContext: 6,
   /** Max top comments fetched/kept per selected thread. */
   maxCommentsInContext: 8,
+  /**
+   * Daily budget for scheduled (cron) runs across ALL topics — the hard cost
+   * ceiling. A runaway subscription list can never burn more than this many
+   * agent runs (and their LLM calls) per UTC day.
+   */
+  maxDailyCronRuns: 20,
+  /**
+   * Topics processed per single cron invocation. The cron route shares the
+   * platform maxDuration budget with everything else it does, and topics run
+   * sequentially — capping the batch keeps one invocation safely inside the
+   * timeout. Remaining topics are picked up next time (oldest last_run_at
+   * first, so no topic starves).
+   */
+  maxTopicsPerCronRun: 5,
 } as const;
 
 /**

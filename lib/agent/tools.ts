@@ -49,9 +49,16 @@ function requirePost(ctx: AgentContext, postId: string): PostSummary {
 /* 1. search_reddit                                                     */
 /* ------------------------------------------------------------------ */
 
-const execSearchReddit: ToolExecutor<"search_reddit"> = async (input) => {
+const execSearchReddit: ToolExecutor<"search_reddit"> = async (input, ctx) => {
   const { posts, source } = await searchReddit(input.keywords, input.subreddits);
-  return { posts, source };
+  // Cron dedup happens HERE — before evaluate_result_quality ever sees the
+  // posts — so an already-recommended thread can't win the scoring and force
+  // a "best candidate was excluded" special case downstream.
+  const excluded = new Set(ctx.excludePostIds ?? []);
+  return {
+    posts: excluded.size > 0 ? posts.filter((p) => !excluded.has(p.id)) : posts,
+    source,
+  };
 };
 
 /* ------------------------------------------------------------------ */

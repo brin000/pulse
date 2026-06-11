@@ -20,6 +20,15 @@ export function GoalBadge({ goal }: { goal: string }) {
   );
 }
 
+/** Marks runs started by the scheduled monitor, not a person at the cockpit. */
+export function CronBadge() {
+  return (
+    <span className="rounded-full border border-line bg-raised px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-secondary">
+      cron
+    </span>
+  );
+}
+
 /** Mock-LLM marker so demo runs are never passed off as live ones. */
 export function MockBadge() {
   return (
