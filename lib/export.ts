@@ -3,6 +3,7 @@
  * (docs/dogfooding/ case files: run summary → posted version → outcome).
  */
 import type { RunResult } from "@/lib/agent/types";
+import { formatCommunity } from "@/lib/platforms/format";
 
 const TONE_LABEL: Record<string, string> = {
   practical: "Practical",
@@ -26,7 +27,7 @@ export function runToMarkdown(result: RunResult): string {
       "",
       "## Selected thread",
       "",
-      `**[${p.title}](${p.url})** — r/${p.subreddit}`,
+      `**[${p.title}](${p.url})** — ${formatCommunity(p.platform, p.community)}`,
       "",
       `${p.score} points · ${p.numComments} comments · ${Math.round(p.ageHours)}h old`,
     );
@@ -55,7 +56,9 @@ export function runToMarkdown(result: RunResult): string {
 
   if (result.standalonePost) {
     const post = result.standalonePost;
-    const target = result.rules ? ` for r/${result.rules.subreddit}` : "";
+    const target = post.community
+      ? ` for ${formatCommunity(post.platform, post.community)}`
+      : "";
     lines.push(
       "",
       `## Standalone post${target}`,

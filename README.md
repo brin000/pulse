@@ -1,8 +1,8 @@
 # Pulse
 
-Pulse helps developers show up in the right Reddit conversations, at the right time, with something worth saying.
+Pulse helps developers show up in the right developer conversations, at the right time, with something worth saying.
 
-Pulse is an on-demand AI agent that helps an indie developer build presence on Reddit by finding timely conversations and drafting useful comment replies.
+Pulse is an on-demand AI agent that helps an indie developer build presence on Reddit and Hacker News by finding timely conversations and drafting useful comment replies. The agent decides per run which platform fits the topic — and explains why on the live timeline (docs/adr/0005-multi-platform.md).
 
 Status: MVP in progress.
 
@@ -21,8 +21,10 @@ data — no API key required. To run with live Claude decisions:
 cp .env.example .env.local   # then set ANTHROPIC_API_KEY
 ```
 
-Reddit data comes from the public API (no auth); if it is unreachable, Pulse
-falls back to mock data and labels it as such in the UI.
+Reddit data comes from the public API (no auth) and Hacker News data from the
+public Algolia API; if either is unreachable, Pulse falls back to mock data
+and labels it as such in the UI (`PULSE_MOCK_REDDIT=1` / `PULSE_MOCK_HN=1`
+pin the fallback for deterministic demos).
 
 ## Why I Am Building This
 
@@ -146,12 +148,13 @@ while (!terminated) {
 
 Each tool has one job:
 
-- `search_reddit`: fetch relevant Reddit threads by topic, keyword, and subreddit.
+- `search_threads`: fetch relevant threads by platform, keyword, and community.
 - `evaluate_result_quality`: score relevance, recency, and discussion activity.
-- `get_post_comments`: fetch top comments only for promising threads.
+- `get_thread_comments`: fetch top comments only for promising threads.
 - `evaluate_content_gap`: identify what useful angle is missing from the discussion.
-- `check_subreddit_rules`: help avoid replies that violate community tone or rules.
-- `draft_comment_reply`: produce reviewable Reddit comment drafts.
+- `check_community_norms`: help avoid replies that violate community tone or rules.
+- `draft_comment_reply`: produce reviewable comment drafts.
+- `draft_standalone_post`: draft an original post for a target community.
 
 The MVP starts with a curated subreddit whitelist for indie developer and AI tooling topics:
 
@@ -222,11 +225,11 @@ Pulse is meant to demonstrate agent runtime and product engineering skills:
 - [x] Context compression
 - [x] Content gap evaluation
 - [x] Reviewable comment reply drafts
+- [x] Standalone post generation
+- [x] Scheduled monitoring
+- [x] Multi-platform support (Reddit + Hacker News, agent-chosen per run)
 - [ ] Vercel deployment
 - [ ] Real dogfooding case
-- [ ] Standalone post generation
-- [ ] Scheduled monitoring
-- [ ] Multi-platform support
 
 ## Honesty Note
 

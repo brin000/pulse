@@ -9,6 +9,8 @@
  * color together, never color alone.
  */
 import type { RunResult } from "@/lib/agent/types";
+import type { PlatformId } from "@/lib/platforms/ids";
+import { PLATFORM_BADGES } from "@/lib/platforms/format";
 import { CheckIcon, XIcon } from "@/components/icons";
 
 /** Goal pill — same mono/uppercase language as the cockpit's mode badge. */
@@ -18,6 +20,23 @@ export function GoalBadge({ goal }: { goal: string }) {
       {goal}
     </span>
   );
+}
+
+/** Which platform a run's deliverable targets (REDDIT / HN). */
+export function PlatformBadge({ platform }: { platform: PlatformId }) {
+  return (
+    <span className="rounded-full border border-line bg-raised px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-secondary">
+      {PLATFORM_BADGES[platform]}
+    </span>
+  );
+}
+
+/**
+ * The platform a stored run delivered for, read off the result. Null when
+ * the run produced nothing platform-bound (failed before selecting/drafting).
+ */
+export function runPlatform(result: RunResult): PlatformId | null {
+  return result.selectedPost?.platform ?? result.standalonePost?.platform ?? null;
 }
 
 /** Marks runs started by the scheduled monitor, not a person at the cockpit. */

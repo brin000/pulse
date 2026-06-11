@@ -4,13 +4,13 @@
  */
 import type {
   CommentSummary,
+  CommunityNorms,
   ContentGap,
   Draft,
   PostSummary,
   QualityEvaluation,
   RunGoal,
   StandalonePost,
-  SubredditRules,
   ToolName,
 } from "@/lib/agent/schemas";
 
@@ -43,17 +43,17 @@ export interface AgentContext {
   selectedPost: PostSummary | null;
   comments: CommentSummary[];
   gap: ContentGap | null;
-  rules: SubredditRules | null;
+  rules: CommunityNorms | null;
   drafts: Draft[];
   /** Original post draft (post goal, or the auto-goal pivot output). */
   standalonePost: StandalonePost | null;
-  /** Whether the data behind this run came from the live Reddit API or mocks. */
+  /** Whether the data behind this run came from a live platform API or mocks. */
   dataSource: "live" | "mock" | null;
   /** Validation/tool failures, kept so the model can react to them. */
   failures: string[];
   /**
    * Post ids the run must never surface (cron dedup: threads already
-   * recommended for this topic). Applied inside the search_reddit executor —
+   * recommended for this topic). Applied inside the search_threads executor —
    * BEFORE quality scoring — so an excluded post can't even become a
    * candidate. Empty/undefined for manual cockpit runs.
    */
@@ -71,12 +71,13 @@ export interface TimelineEvent {
     | "tool_error"
     | "finish"
     | "error";
-  /** Short human-readable headline, e.g. "search_reddit". */
+  /** Short human-readable headline, e.g. "search_threads". */
   title: string;
   /**
    * Structured link to the tool a tool_* event belongs to. The UI matches on
    * this field (icons, pipeline progress) — titles are display copy only and
-   * must never be parsed.
+   * must never be parsed. Events persisted before P5-3 carry legacy names
+   * (e.g. "search_reddit"); UI code resolves them via canonicalToolName.
    */
   tool?: ToolName;
   /** The model's `reason` — the "why" behind the step. */
@@ -98,7 +99,7 @@ export interface RunResult {
   topic: string;
   selectedPost: PostSummary | null;
   gap: ContentGap | null;
-  rules: SubredditRules | null;
+  rules: CommunityNorms | null;
   drafts: Draft[];
   /** Original post draft, when the run produced one instead of (or beyond) replies. */
   standalonePost: StandalonePost | null;

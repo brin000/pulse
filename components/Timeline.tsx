@@ -10,7 +10,7 @@
  */
 import type { ReactNode } from "react";
 import type { TimelineEvent } from "@/lib/agent/types";
-import type { ToolName } from "@/lib/agent/schemas";
+import { canonicalToolName, type ToolName } from "@/lib/agent/schemas";
 import type { RunStatus } from "@/hooks/useAgentRun";
 import {
   AlertIcon,
@@ -28,17 +28,21 @@ import {
 
 /** One representative icon per tool, keyed by the event's structured `tool` field. */
 const TOOL_ICONS: Record<ToolName, ReactNode> = {
-  search_reddit: <SearchIcon size={14} />,
+  search_threads: <SearchIcon size={14} />,
   evaluate_result_quality: <GaugeIcon size={14} />,
-  get_post_comments: <MessagesIcon size={14} />,
+  get_thread_comments: <MessagesIcon size={14} />,
   evaluate_content_gap: <LightbulbIcon size={14} />,
-  check_subreddit_rules: <ShieldIcon size={14} />,
+  check_community_norms: <ShieldIcon size={14} />,
   draft_comment_reply: <PenIcon size={14} />,
   draft_standalone_post: <FileTextIcon size={14} />,
 };
 
 function eventIcon(event: TimelineEvent) {
-  if (event.tool) return TOOL_ICONS[event.tool];
+  // Stored events may carry pre-rename tool names (search_reddit, ...);
+  // canonicalToolName maps them so history replay keeps its icons. Anything
+  // unknown falls through to the per-type icons instead of rendering nothing.
+  const tool = canonicalToolName(event.tool);
+  if (tool) return TOOL_ICONS[tool];
   if (event.type === "decision") return <BrainIcon size={14} />;
   if (event.type === "finish") return <CheckIcon size={14} />;
   if (event.type === "error" || event.type === "tool_error") return <AlertIcon size={14} />;

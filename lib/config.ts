@@ -65,3 +65,12 @@ export function isLiveLlmAuthorized(token: string | null | undefined): boolean {
 export function isMockReddit(): boolean {
   return process.env.PULSE_MOCK_REDDIT === "1";
 }
+
+/**
+ * Force mock Hacker News data — the HN twin of PULSE_MOCK_REDDIT. Each
+ * platform gets its own flag so one can be pinned to mock while the other
+ * stays live; the adapters also fall back to mock on any API failure.
+ */
+export function isMockHackerNews(): boolean {
+  return process.env.PULSE_MOCK_HN === "1";
+}

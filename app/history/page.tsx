@@ -15,6 +15,8 @@ import {
   GoalBadge,
   MockBadge,
   OutcomeBadge,
+  PlatformBadge,
+  runPlatform,
   summarizeOutput,
 } from "@/components/RunBadges";
 import { ArrowLeftIcon, PlayIcon } from "@/components/icons";
@@ -66,39 +68,43 @@ export default async function HistoryPage() {
         <EmptyState />
       ) : (
         <ol className="flex flex-col gap-2">
-          {runs.map((run, i) => (
-            <li
-              key={run.id}
-              className="animate-fade-up motion-reduce:animate-none"
-              // Static classes can't express per-row stagger; cap it so deep
-              // rows don't appear seconds late.
-              style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
-            >
-              <Link
-                href={`/history/${run.id}`}
-                className="block rounded-xl border border-line bg-surface px-4 py-3 transition-colors hover:border-accent/40 hover:bg-surface/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          {runs.map((run, i) => {
+            const platform = runPlatform(run.result);
+            return (
+              <li
+                key={run.id}
+                className="animate-fade-up motion-reduce:animate-none"
+                // Static classes can't express per-row stagger; cap it so deep
+                // rows don't appear seconds late.
+                style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
               >
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                  <span className="min-w-0 flex-1 basis-full truncate text-[14px] font-medium text-primary sm:basis-auto">
-                    {run.topic}
-                  </span>
-                  {/* 11px meta uses secondary, never muted (AA at small sizes). */}
-                  <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-secondary">
-                    {relativeTime(run.createdAt)}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <OutcomeBadge outcome={run.outcome} />
-                  <GoalBadge goal={run.goal} />
-                  {run.source === "cron" && <CronBadge />}
-                  {run.mockLlm && <MockBadge />}
-                  <span className="font-mono text-[11px] tabular-nums text-secondary">
-                    {summarizeOutput(run.result)}
-                  </span>
-                </div>
-              </Link>
-            </li>
-          ))}
+                <Link
+                  href={`/history/${run.id}`}
+                  className="block rounded-xl border border-line bg-surface px-4 py-3 transition-colors hover:border-accent/40 hover:bg-surface/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                    <span className="min-w-0 flex-1 basis-full truncate text-[14px] font-medium text-primary sm:basis-auto">
+                      {run.topic}
+                    </span>
+                    {/* 11px meta uses secondary, never muted (AA at small sizes). */}
+                    <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-secondary">
+                      {relativeTime(run.createdAt)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <OutcomeBadge outcome={run.outcome} />
+                    <GoalBadge goal={run.goal} />
+                    {platform && <PlatformBadge platform={platform} />}
+                    {run.source === "cron" && <CronBadge />}
+                    {run.mockLlm && <MockBadge />}
+                    <span className="font-mono text-[11px] tabular-nums text-secondary">
+                      {summarizeOutput(run.result)}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
         </ol>
       )}
     </main>

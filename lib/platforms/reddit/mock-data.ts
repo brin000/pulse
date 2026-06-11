@@ -3,7 +3,7 @@
  *
  * Used when PULSE_MOCK_REDDIT=1 or when the live Reddit API is unreachable.
  * The data is shaped exactly like compressed live data and is always labeled
- * `source: "mock"` so the UI can show a badge — demo data is never passed off
+ * `source: "mock"` so the UI can show a badge ? demo data is never passed off
  * as real.
  */
 import type { CommentSummary, PostSummary } from "@/lib/agent/schemas";
@@ -11,7 +11,8 @@ import type { CommentSummary, PostSummary } from "@/lib/agent/schemas";
 export const MOCK_POSTS: PostSummary[] = [
   {
     id: "mock-1",
-    subreddit: "LocalLLaMA",
+    platform: "reddit",
+    community: "LocalLLaMA",
     title:
       "What does your agent harness actually do besides calling the model in a loop?",
     score: 412,
@@ -23,7 +24,8 @@ export const MOCK_POSTS: PostSummary[] = [
   },
   {
     id: "mock-2",
-    subreddit: "nextjs",
+    platform: "reddit",
+    community: "nextjs",
     title: "Streaming tool-call progress to the client: SSE or the AI SDK hooks?",
     score: 156,
     numComments: 34,
@@ -34,7 +36,8 @@ export const MOCK_POSTS: PostSummary[] = [
   },
   {
     id: "mock-3",
-    subreddit: "SideProject",
+    platform: "reddit",
+    community: "SideProject",
     title: "I keep missing the window to join discussions relevant to my product",
     score: 73,
     numComments: 21,
@@ -45,7 +48,8 @@ export const MOCK_POSTS: PostSummary[] = [
   },
   {
     id: "mock-4",
-    subreddit: "webdev",
+    platform: "reddit",
+    community: "webdev",
     title: "Are structured outputs finally good enough to build on?",
     score: 240,
     numComments: 52,

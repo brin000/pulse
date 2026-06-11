@@ -8,7 +8,9 @@
  * reserved for the draft copy button (the cockpit's single delight point).
  */
 import { useState } from "react";
-import type { StandalonePost, SubredditRules } from "@/lib/agent/schemas";
+import type { CommunityNorms, StandalonePost } from "@/lib/agent/schemas";
+// format.ts is dependency-free, safe in client bundles (no fetch/OAuth code).
+import { formatCommunity, PLATFORM_BADGES } from "@/lib/platforms/format";
 import { SelfCheckChips } from "@/components/DraftsPanel";
 import { CheckIcon, CopyIcon, ShieldIcon } from "@/components/icons";
 
@@ -23,12 +25,15 @@ export function StandalonePostPanel({
   rules,
 }: {
   post: StandalonePost;
-  rules: SubredditRules | null;
+  rules: CommunityNorms | null;
 }) {
   const [copied, setCopied] = useState(false);
+  // Pre-P5-3 posts carry no target fields; the norms object is the fallback.
+  const targetPlatform = post.community ? post.platform : rules?.platform;
+  const targetCommunity = post.community || rules?.community;
 
   async function copyPost() {
-    // Title + body together — that's what gets pasted into Reddit's composer.
+    // Title + body together — that's what gets pasted into the platform's composer.
     const text = `${post.title}\n\n${post.body}`;
     try {
       await navigator.clipboard.writeText(text);
@@ -53,9 +58,15 @@ export function StandalonePostPanel({
     <section className="rounded-xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          {rules && (
+          {/* Platform badge: same visual language as the ThreadCard badge */}
+          {targetPlatform && (
+            <span className="rounded-full border border-line bg-raised px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-secondary">
+              {PLATFORM_BADGES[targetPlatform]}
+            </span>
+          )}
+          {targetPlatform && targetCommunity && (
             <span className="rounded-full border border-line bg-raised px-2.5 py-0.5 font-mono text-[11px] text-secondary">
-              r/{rules.subreddit}
+              {formatCommunity(targetPlatform, targetCommunity)}
             </span>
           )}
           <span className="rounded-full border border-accent/40 bg-accent/15 px-2.5 py-0.5 font-mono text-[11px] text-accent">
@@ -99,7 +110,7 @@ export function StandalonePostPanel({
           {/* Small meta text uses secondary so it stays AA-readable on surface */}
           <h3 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
             <ShieldIcon size={12} />
-            r/{rules.subreddit} norms applied
+            {formatCommunity(rules.platform, rules.community)} norms applied
           </h3>
           <ul className="mt-1.5 flex flex-col gap-1">
             {rules.hints.map((hint) => (

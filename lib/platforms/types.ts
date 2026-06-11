@@ -11,9 +11,9 @@
  * does rather than speculating about future needs.
  */
 import type { CommentSummary, PostSummary } from "@/lib/agent/schemas";
+import type { PlatformId } from "@/lib/platforms/ids";
 
-/** Platforms known to Pulse. Reddit only until P5-2 adds Hacker News. */
-export type PlatformId = "reddit";
+export type { PlatformId };
 
 /** Search result with provenance — "mock" is surfaced as a badge in the UI. */
 export interface ThreadSearchResult {
@@ -32,8 +32,9 @@ export interface PlatformAdapter {
   /** Human-readable platform name, e.g. "Reddit". */
   displayName: string;
   /**
-   * The curated community whitelist for this platform (subreddits for Reddit).
-   * Deliberately small — see docs/adr/0002-curated-subreddit-whitelist.md.
+   * The curated community whitelist for this platform (subreddits for
+   * Reddit, sections for Hacker News). Deliberately small — see
+   * docs/adr/0002-curated-subreddit-whitelist.md.
    */
   communities: readonly string[];
   /**
@@ -49,9 +50,12 @@ export interface PlatformAdapter {
   getComments(postId: string): Promise<ThreadCommentsResult>;
   /**
    * Curated tone/rule hints for a community (the platform-specific knowledge
-   * behind the `check_subreddit_rules` tool). Returns [] for unknown values.
+   * behind the `check_community_norms` tool). Returns [] for unknown values.
    */
   communityNorms(community: string): string[];
-  /** Display form of a community name, e.g. "webdev" -> "r/webdev". */
+  /**
+   * Display form of a community name, e.g. "webdev" -> "r/webdev". Client
+   * components use the same pure functions via lib/platforms/format.ts.
+   */
   formatCommunity(community: string): string;
 }

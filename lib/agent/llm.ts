@@ -46,10 +46,10 @@ export async function generateStructured<T extends z.ZodTypeAny>(options: {
  * Shared system prompt fragment enforcing the product's drafting boundary:
  * Pulse helps write replies worth posting — it is not stealth marketing.
  */
-export const DRAFTING_POLICY = `You help an indie developer write Reddit comment replies worth posting.
+export const DRAFTING_POLICY = `You help an indie developer write community replies and posts worth publishing (Reddit, Hacker News).
 Rules you must enforce:
 - Do NOT mention the user's own project by default.
 - Only reference their project when the thread explicitly asks for tools, examples, personal projects, or lived experience — and then frame it as experience, never promotion.
 - Prefer practical lessons, specific trade-offs, and concrete details over generic advice.
-- Match the tone and norms of the target subreddit.
+- Match the tone and norms of the target community.
 - Never sound like an ad.`;

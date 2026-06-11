@@ -160,6 +160,40 @@ function getDb(): DbHandle {
 /* Runs                                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Upgrade pre-P5-3 result JSON to the current platform-aware shape: posts and
+ * rules used a `subreddit` field and carried no `platform`; standalone posts
+ * had no target fields at all. Migrating once at the read boundary keeps
+ * every replay component speaking only the current shape. (Events are NOT
+ * rewritten — the UI resolves legacy tool names via canonicalToolName, so the
+ * stored execution log stays a verbatim record.)
+ */
+function upgradeLegacyResult(raw: any): RunResult {
+  const upgradePost = (p: any) => {
+    if (!p || typeof p !== "object" || p.platform) return p;
+    const { subreddit, ...rest } = p;
+    return { platform: "reddit", community: subreddit ?? "", ...rest };
+  };
+
+  const rules = upgradePost(raw?.rules);
+  let standalonePost = raw?.standalonePost ?? null;
+  if (standalonePost && !standalonePost.platform) {
+    // Old post-goal runs showed the target via `rules`; carry it over.
+    standalonePost = {
+      platform: "reddit",
+      community: rules?.community ?? "",
+      ...standalonePost,
+    };
+  }
+
+  return {
+    ...raw,
+    selectedPost: upgradePost(raw?.selectedPost),
+    rules,
+    standalonePost,
+  } as RunResult;
+}
+
 function parseRow(row: RunRow): StoredRun {
   return {
     id: row.id,
@@ -169,7 +203,7 @@ function parseRow(row: RunRow): StoredRun {
     mockLlm: row.mockLlm,
     dataSource: row.dataSource as "live" | "mock" | null,
     source: (row.source as RunSource) ?? "manual",
-    result: JSON.parse(row.resultJson) as RunResult,
+    result: upgradeLegacyResult(JSON.parse(row.resultJson)),
     events: JSON.parse(row.eventsJson) as TimelineEvent[],
     createdAt: row.createdAt,
   };

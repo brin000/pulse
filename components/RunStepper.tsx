@@ -5,7 +5,7 @@
  * Derives progress from timeline tool events and the streamed result.
  */
 import type { RunResult, TimelineEvent } from "@/lib/agent/types";
-import type { ToolName } from "@/lib/agent/schemas";
+import { canonicalToolName, type ToolName } from "@/lib/agent/schemas";
 import type { RunStatus } from "@/hooks/useAgentRun";
 import { CheckIcon } from "@/components/icons";
 
@@ -23,16 +23,22 @@ type StepState = "pending" | "active" | "complete" | "skipped";
 /**
  * A tool has at least started. Used for the Scan step: once a downstream tool
  * (quality eval, comments) starts, searching is necessarily over.
+ * Matching goes through canonicalToolName so events persisted under the
+ * pre-P5-3 tool names (search_reddit, ...) still drive replay progress.
  */
 function toolStarted(events: TimelineEvent[], tool: ToolName): boolean {
   return events.some(
-    (e) => (e.type === "tool_start" || e.type === "tool_result") && e.tool === tool,
+    (e) =>
+      (e.type === "tool_start" || e.type === "tool_result") &&
+      canonicalToolName(e.tool) === tool,
   );
 }
 
 /** A tool finished successfully. */
 function toolCompleted(events: TimelineEvent[], tool: ToolName): boolean {
-  return events.some((e) => e.type === "tool_result" && e.tool === tool);
+  return events.some(
+    (e) => e.type === "tool_result" && canonicalToolName(e.tool) === tool,
+  );
 }
 
 /**
@@ -48,24 +54,24 @@ function deriveStepStates(
   result: RunResult | null,
 ): Record<StepId, StepState> {
   // Standalone-post path (goal=post, or an auto run that pivoted): in the
-  // reply pipeline check_subreddit_rules only ever runs AFTER comments were
-  // read, so rules-without-comments unambiguously signals the post path.
+  // reply pipeline check_community_norms only ever runs AFTER comments were
+  // read, so norms-without-comments unambiguously signals the post path.
   const pivot =
-    (toolStarted(events, "check_subreddit_rules") &&
-      !toolCompleted(events, "get_post_comments")) ||
+    (toolStarted(events, "check_community_norms") &&
+      !toolCompleted(events, "get_thread_comments")) ||
     toolStarted(events, "draft_standalone_post") ||
     result?.standalonePost != null;
 
   const scanComplete =
     toolStarted(events, "evaluate_result_quality") ||
-    toolStarted(events, "get_post_comments") ||
+    toolStarted(events, "get_thread_comments") ||
     result?.selectedPost != null ||
-    // Once the post path begins (rules check), searching is necessarily over.
+    // Once the post path begins (norms check), searching is necessarily over.
     pivot;
   // Reading a post's comments is how the orchestrator commits to a thread,
-  // so a completed get_post_comments means the Select step is done.
+  // so a completed get_thread_comments means the Select step is done.
   const selectComplete =
-    toolCompleted(events, "get_post_comments") || result?.selectedPost != null;
+    toolCompleted(events, "get_thread_comments") || result?.selectedPost != null;
   const gapComplete =
     toolCompleted(events, "evaluate_content_gap") || result?.gap != null;
   const draftComplete =

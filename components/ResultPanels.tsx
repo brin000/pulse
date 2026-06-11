@@ -93,7 +93,7 @@ export function ResultPanels({
       </div>
     ) : (
       <PanelPlaceholder
-        hint="An original post — title and body — drafted for the best-fitting subreddit. You review, you post."
+        hint="An original post — title and body — drafted for the best-fitting community. You review, you post."
         loading={running}
       />
     ),

@@ -25,6 +25,7 @@ import {
   type ToolName,
 } from "@/lib/agent/schemas";
 import { toolExecutors } from "@/lib/agent/tools";
+import { formatCommunity } from "@/lib/platforms/format";
 import type { AgentContext, RunResult, TimelineEvent } from "@/lib/agent/types";
 
 /** Orchestrator → API route callback; the route forwards events as SSE. */
@@ -89,8 +90,8 @@ function compressAndUpdateContext(
   const next = { ...ctx };
 
   switch (tool) {
-    case "search_reddit": {
-      const out = toolOutputSchemas.search_reddit.parse(output);
+    case "search_threads": {
+      const out = toolOutputSchemas.search_threads.parse(output);
       next.searchAttempts += 1;
       next.posts = out.posts.slice(0, AGENT_LIMITS.maxPostsInContext);
       next.dataSource = out.source;
@@ -101,9 +102,9 @@ function compressAndUpdateContext(
       next.quality = toolOutputSchemas.evaluate_result_quality.parse(output);
       break;
     }
-    case "get_post_comments": {
-      const out = toolOutputSchemas.get_post_comments.parse(output);
-      const inp = toolInputSchemas.get_post_comments.parse(input);
+    case "get_thread_comments": {
+      const out = toolOutputSchemas.get_thread_comments.parse(output);
+      const inp = toolInputSchemas.get_thread_comments.parse(input);
       next.comments = out.comments.slice(0, AGENT_LIMITS.maxCommentsInContext);
       // Committing to a thread happens here: reading its comments selects it.
       next.selectedPost = ctx.posts.find((p) => p.id === inp.postId) ?? null;
@@ -113,8 +114,8 @@ function compressAndUpdateContext(
       next.gap = toolOutputSchemas.evaluate_content_gap.parse(output);
       break;
     }
-    case "check_subreddit_rules": {
-      next.rules = toolOutputSchemas.check_subreddit_rules.parse(output);
+    case "check_community_norms": {
+      next.rules = toolOutputSchemas.check_community_norms.parse(output);
       break;
     }
     case "draft_comment_reply": {
@@ -144,25 +145,25 @@ function shouldTerminate(ctx: AgentContext, decision: AgentDecision): boolean {
 /** One-line human-readable summary of a tool result for the timeline. */
 function describeResult(tool: ToolName, output: unknown): string {
   switch (tool) {
-    case "search_reddit": {
-      const out = toolOutputSchemas.search_reddit.parse(output);
+    case "search_threads": {
+      const out = toolOutputSchemas.search_threads.parse(output);
       return `${out.posts.length} posts (${out.source} data)`;
     }
     case "evaluate_result_quality": {
       const out = toolOutputSchemas.evaluate_result_quality.parse(output);
       return `score ${out.score}, ${out.acceptable ? "acceptable" : "below threshold"}`;
     }
-    case "get_post_comments": {
-      const out = toolOutputSchemas.get_post_comments.parse(output);
+    case "get_thread_comments": {
+      const out = toolOutputSchemas.get_thread_comments.parse(output);
       return `${out.comments.length} top comments (${out.source} data)`;
     }
     case "evaluate_content_gap": {
       const out = toolOutputSchemas.evaluate_content_gap.parse(output);
       return `${out.missingAngles.length} missing angles found`;
     }
-    case "check_subreddit_rules": {
-      const out = toolOutputSchemas.check_subreddit_rules.parse(output);
-      return `${out.hints.length} tone hints for r/${out.subreddit}`;
+    case "check_community_norms": {
+      const out = toolOutputSchemas.check_community_norms.parse(output);
+      return `${out.hints.length} tone hints for ${formatCommunity(out.platform, out.community)}`;
     }
     case "draft_comment_reply": {
       const out = toolOutputSchemas.draft_comment_reply.parse(output);
@@ -182,8 +183,8 @@ function describeResult(tool: ToolName, output: unknown): string {
  * (the "retry limits live in application code" promise from ADR-0001).
  */
 function attemptLimitViolation(ctx: AgentContext, toolName: ToolName): string | null {
-  if (toolName === "search_reddit" && ctx.searchAttempts >= AGENT_LIMITS.maxSearchAttempts) {
-    return `search_reddit rejected: attempt limit reached (${ctx.searchAttempts}/${AGENT_LIMITS.maxSearchAttempts}). Work with the posts already in context or finish.`;
+  if (toolName === "search_threads" && ctx.searchAttempts >= AGENT_LIMITS.maxSearchAttempts) {
+    return `search_threads rejected: attempt limit reached (${ctx.searchAttempts}/${AGENT_LIMITS.maxSearchAttempts}). Work with the posts already in context or finish.`;
   }
   // Replies and standalone posts share one drafting budget: both are LLM
   // drafting calls, and a model bouncing between them must still be bounded.

@@ -6,6 +6,7 @@
 import type { PlatformAdapter } from "@/lib/platforms/types";
 import { getPostComments, searchReddit } from "@/lib/platforms/reddit/client";
 import {
+  formatRedditCommunity,
   SUBREDDIT_RULE_HINTS,
   SUBREDDIT_WHITELIST,
   type Subreddit,
@@ -22,5 +23,5 @@ export const redditAdapter: PlatformAdapter = {
   getComments: (postId) => getPostComments(postId),
   communityNorms: (community) =>
     SUBREDDIT_RULE_HINTS[community as Subreddit] ?? [],
-  formatCommunity: (community) => `r/${community}`,
+  formatCommunity: formatRedditCommunity,
 };

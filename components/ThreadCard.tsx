@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * The Reddit thread the agent committed to replying in.
+ * The thread the agent committed to replying in (Reddit or Hacker News).
  * Meta values (score / comments / age) use tabular mono so numbers align
  * and don't shift layout as they render.
  */
 import type { PostSummary } from "@/lib/agent/schemas";
+// format.ts is dependency-free, safe in client bundles (no fetch/OAuth code).
+import { formatCommunity, PLATFORM_BADGES } from "@/lib/platforms/format";
 import { ArrowUpIcon, ExternalLinkIcon, MessagesIcon } from "@/components/icons";
 
 export function ThreadCard({
@@ -18,9 +20,15 @@ export function ThreadCard({
   return (
     <article className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 font-mono text-[12px] text-accent">
-          r/{post.subreddit}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Platform badge: same visual language as the mock-data badge */}
+          <span className="rounded-full border border-line bg-raised px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-secondary">
+            {PLATFORM_BADGES[post.platform]}
+          </span>
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 font-mono text-[12px] text-accent">
+            {formatCommunity(post.platform, post.community)}
+          </span>
+        </div>
         {/* Honesty rule: mock data is always disclosed, never passed off as real */}
         {dataSource === "mock" && (
           <span className="rounded-full border border-line bg-raised px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-secondary">

@@ -8,10 +8,17 @@
  * Mock mode: a deterministic state machine emits the same AgentDecision shape
  * with honest `reason`s, so the full loop (validation, SSE, UI) is exercised
  * without an API key.
+ *
+ * Platform choice is part of the decision space since P5-3: the agent picks
+ * Reddit or Hacker News per run based on where the topic's audience lives,
+ * and explains the pick in the search step's reason.
  */
 import { AGENT_LIMITS } from "@/lib/config";
-import { getPlatform } from "@/lib/platforms";
+import { getPlatform, PLATFORMS } from "@/lib/platforms";
+import type { PlatformId } from "@/lib/platforms/ids";
+import { formatCommunity, PLATFORM_LABELS } from "@/lib/platforms/format";
 import type { Subreddit } from "@/lib/platforms/reddit/communities";
+import type { HnCommunity } from "@/lib/platforms/hackernews/communities";
 import {
   agentDecisionSchema,
   TOOL_NAMES,
@@ -19,13 +26,6 @@ import {
 } from "@/lib/agent/schemas";
 import type { AgentContext } from "@/lib/agent/types";
 import { generateStructured } from "@/lib/agent/llm";
-
-/**
- * Decisions are Reddit-only until P5-2 threads a platform id through the run;
- * the whitelist is read from the adapter so this file no longer hardcodes
- * platform knowledge beyond the routing key.
- */
-const reddit = getPlatform("reddit");
 
 export async function decideNextAction(ctx: AgentContext): Promise<AgentDecision> {
   return ctx.mockLlm ? decideMock(ctx) : decideWithModel(ctx);
@@ -37,7 +37,7 @@ export async function decideNextAction(ctx: AgentContext): Promise<AgentDecision
 
 /**
  * Compress the working context into a short, structured state report.
- * The model sees summaries and counts — never raw Reddit payloads.
+ * The model sees summaries and counts — never raw platform payloads.
  */
 function summarizeContext(ctx: AgentContext): string {
   const lines = [
@@ -53,7 +53,7 @@ function summarizeContext(ctx: AgentContext): string {
       "posts:",
       ...ctx.posts.map(
         (p) =>
-          `  - [${p.id}] r/${p.subreddit} "${p.title.slice(0, 80)}" (${Math.round(
+          `  - [${p.id}] ${formatCommunity(p.platform, p.community)} "${p.title.slice(0, 80)}" (${Math.round(
             p.ageHours,
           )}h old, ${p.numComments} comments)`,
       ),
@@ -67,7 +67,9 @@ function summarizeContext(ctx: AgentContext): string {
   if (ctx.selectedPost) lines.push(`selected_post: ${ctx.selectedPost.id}`);
   if (ctx.comments.length > 0) lines.push(`comments_loaded: ${ctx.comments.length}`);
   if (ctx.gap) lines.push(`content_gap: ${ctx.gap.recommendedAngle}`);
-  if (ctx.rules) lines.push(`rules_checked: r/${ctx.rules.subreddit}`);
+  if (ctx.rules) {
+    lines.push(`norms_checked: ${formatCommunity(ctx.rules.platform, ctx.rules.community)}`);
+  }
   if (ctx.drafts.length > 0) lines.push(`drafts_ready: ${ctx.drafts.length}`);
   if (ctx.standalonePost) lines.push(`standalone_post_ready: "${ctx.standalonePost.title.slice(0, 60)}"`);
   if (ctx.failures.length > 0) {
@@ -76,19 +78,27 @@ function summarizeContext(ctx: AgentContext): string {
   return lines.join("\n");
 }
 
+/** "reddit: webdev, nextjs, ... · hackernews: story, ask-hn, show-hn" */
+function describePlatforms(): string {
+  return Object.values(PLATFORMS)
+    .map((p) => `${p.id} (${p.displayName}): ${p.communities.join(", ")}`)
+    .join(" · ");
+}
+
 async function decideWithModel(ctx: AgentContext): Promise<AgentDecision> {
   return generateStructured({
     schema: agentDecisionSchema,
     system: [
-      "You are the decision core of Pulse, an agent that either joins a live Reddit discussion with drafted replies or drafts an original standalone post for a target subreddit.",
+      "You are the decision core of Pulse, an agent that either joins a live developer discussion (on Reddit or Hacker News) with drafted replies, or drafts an original standalone post for a target community.",
       `Available tools: ${TOOL_NAMES.join(", ")}.`,
       // The decision schema can't describe per-tool inputs, so spell them out.
-      "Tool inputs: search_reddit {keywords: string[], subreddits: string[]} · evaluate_result_quality {} (scores posts already in context) · get_post_comments {postId} · evaluate_content_gap {postId} · check_subreddit_rules {subreddit} · draft_comment_reply {postId, angle} · draft_standalone_post {subreddit, angle}.",
-      `Allowed subreddits: ${reddit.communities.join(", ")}.`,
+      "Tool inputs: search_threads {platform, keywords: string[], communities: string[]} · evaluate_result_quality {} (scores posts already in context) · get_thread_comments {postId} · evaluate_content_gap {postId} · check_community_norms {platform, community} · draft_comment_reply {postId, angle} · draft_standalone_post {platform, community, angle}.",
+      `Platforms and their allowed communities: ${describePlatforms()}. Communities must belong to the platform you pass alongside them.`,
+      "Before the first search, decide which platform fits the topic best: startup/founder/Show-HN-flavored topics and 'what does HN think' questions lean hackernews; framework-, webdev- and niche-community topics lean reddit. State why you picked the platform in the search step's reason. Stay on one platform unless its results are exhausted — then retrying on the other platform is a valid refinement.",
       "The run state includes `goal`, which selects the flow:",
-      "- goal=reply: search_reddit -> evaluate_result_quality -> (retry search with refined keywords if low quality) -> get_post_comments on the best post -> evaluate_content_gap -> check_subreddit_rules -> draft_comment_reply -> finish.",
-      "- goal=post: optionally search_reddit once for context, then pick the best-fitting allowed subreddit -> check_subreddit_rules -> draft_standalone_post -> finish. Skip post selection, comments and gap analysis.",
-      "- goal=auto: follow the reply flow first; if search retries are exhausted or no acceptable thread exists, pivot to the post flow (check_subreddit_rules -> draft_standalone_post) instead of failing.",
+      "- goal=reply: search_threads -> evaluate_result_quality -> (retry search with refined keywords if low quality) -> get_thread_comments on the best post -> evaluate_content_gap -> check_community_norms -> draft_comment_reply -> finish.",
+      "- goal=post: optionally search_threads once for context, then pick the best-fitting platform + allowed community -> check_community_norms -> draft_standalone_post -> finish. Skip post selection, comments and gap analysis.",
+      "- goal=auto: follow the reply flow first; if search retries are exhausted or no acceptable thread exists, pivot to the post flow (check_community_norms -> draft_standalone_post) instead of failing.",
       "Rules:",
       "- Always include a concrete, specific `reason` — it is shown to the user live.",
       "- Retry search at most until the attempt limit; refine keywords when you do.",
@@ -102,6 +112,27 @@ async function decideWithModel(ctx: AgentContext): Promise<AgentDecision> {
 /* ------------------------------------------------------------------ */
 /* Mock mode: deterministic, honest, exercises every branch             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Deterministic platform choice, mirroring the guidance the live prompt
+ * gives the model: startup/founder/Show-HN-flavored topics read as Hacker
+ * News territory, everything else stays on the (larger) Reddit whitelist.
+ * Stateless on purpose — derived from the topic, it is stable across steps.
+ */
+function pickPlatformFor(topic: string): PlatformId {
+  const t = topic.toLowerCase();
+  if (/\b(show\s?hn|ask\s?hn|hacker\s?news|hn|startups?|founders?|yc|y\s?combinator)\b/.test(t)) {
+    return "hackernews";
+  }
+  return "reddit";
+}
+
+/** One-line justification of the platform pick, surfaced in search reasons. */
+function platformReason(platform: PlatformId, topic: string): string {
+  return platform === "hackernews"
+    ? `The topic "${topic.slice(0, 60)}" has a startup/Show-HN flavor, so its audience lives on Hacker News rather than the curated subreddits.`
+    : `The topic "${topic.slice(0, 60)}" fits the curated developer subreddits better than Hacker News' startup-leaning front page.`;
+}
 
 /** Derive search keywords from the topic; on retries, broaden the terms. */
 function keywordsFor(ctx: AgentContext): string[] {
@@ -117,13 +148,25 @@ function keywordsFor(ctx: AgentContext): string[] {
 }
 
 /**
- * Deterministic target-subreddit choice for the standalone-post path:
- * match topic words against whitelist names (plus a few topical aliases),
- * fall back to the first whitelist entry so the choice always succeeds.
+ * Deterministic target-community choice for the standalone-post path:
+ * match topic words against the chosen platform's whitelist (plus a few
+ * topical aliases), with a guaranteed fallback so the choice always succeeds.
  */
-function pickSubredditFor(topic: string): string {
+function pickCommunityFor(platform: PlatformId, topic: string): string {
   const haystack = topic.toLowerCase();
-  for (const sub of reddit.communities) {
+
+  if (platform === "hackernews") {
+    // Alias values keep the HnCommunity type so a typo fails compilation.
+    const showHn: HnCommunity = "show-hn";
+    const askHn: HnCommunity = "ask-hn";
+    // Show HN wants something to demo; questions/discussions are Ask HN.
+    if (/\b(show\s?hn|side\s?project|built|launch|feedback|demo)\b/.test(haystack)) {
+      return showHn;
+    }
+    return askHn;
+  }
+
+  for (const sub of getPlatform("reddit").communities) {
     if (haystack.includes(sub.toLowerCase())) return sub;
   }
   // Alias values keep the Subreddit type so a typo here fails compilation.
@@ -137,37 +180,45 @@ function pickSubredditFor(topic: string): string {
   for (const [pattern, sub] of aliases) {
     if (pattern.test(haystack)) return sub;
   }
-  return reddit.communities[0];
+  return getPlatform("reddit").communities[0];
 }
 
 /**
- * Standalone-post pipeline: (optional context search) → rules → draft → finish.
+ * Standalone-post pipeline: (optional context search) → norms → draft → finish.
  * Entered directly for goal=post, or as the auto-goal pivot once the reply
  * search is exhausted (in that case search attempts are already spent, so the
  * context-search branch self-skips).
  */
 function decideMockPost(ctx: AgentContext, pivoted: boolean): AgentDecision {
+  const platformId = pickPlatformFor(ctx.topic);
+  const platform = getPlatform(platformId);
+
   // a) One context-research search — optional by design, never retried.
   if (ctx.searchAttempts === 0) {
     return {
       action: "call_tool",
-      toolName: "search_reddit",
-      input: { keywords: keywordsFor(ctx), subreddits: [...reddit.communities] },
-      reason: `Goal is an original post. Scanning the curated subreddits once to understand what is already being discussed about "${ctx.topic}".`,
+      toolName: "search_threads",
+      input: {
+        platform: platformId,
+        keywords: keywordsFor(ctx),
+        communities: [...platform.communities],
+      },
+      reason: `Goal is an original post. ${platformReason(platformId, ctx.topic)} Scanning its curated communities once to understand what is already being discussed.`,
     };
   }
 
-  const target = ctx.rules?.subreddit ?? pickSubredditFor(ctx.topic);
+  const target = ctx.rules?.community ?? pickCommunityFor(platformId, ctx.topic);
+  const targetLabel = formatCommunity(platformId, target);
 
   // b) Community norms before writing anything.
   if (ctx.rules === null) {
     return {
       action: "call_tool",
-      toolName: "check_subreddit_rules",
-      input: { subreddit: target },
+      toolName: "check_community_norms",
+      input: { platform: platformId, community: target },
       reason: pivoted
-        ? `No joinable thread found — pivoting to an original post. Checking r/${target} norms before drafting.`
-        : `r/${target} fits the topic best. Checking its tone guidelines before drafting the post.`,
+        ? `No joinable thread found — pivoting to an original post. ${platformReason(platformId, ctx.topic)} Checking ${targetLabel} norms before drafting.`
+        : `${targetLabel} fits the topic best on ${PLATFORM_LABELS[platformId]}. Checking its tone guidelines before drafting the post.`,
     };
   }
 
@@ -177,10 +228,11 @@ function decideMockPost(ctx: AgentContext, pivoted: boolean): AgentDecision {
       action: "call_tool",
       toolName: "draft_standalone_post",
       input: {
-        subreddit: target,
+        platform: platformId,
+        community: target,
         angle: `Practical lessons and concrete trade-offs from hands-on work on ${ctx.topic}, framed to start a discussion`,
       },
-      reason: `Drafting an original post for r/${target} that opens the conversation instead of joining one.`,
+      reason: `Drafting an original post for ${targetLabel} that opens the conversation instead of joining one.`,
     };
   }
 
@@ -188,7 +240,7 @@ function decideMockPost(ctx: AgentContext, pivoted: boolean): AgentDecision {
   if (ctx.standalonePost) {
     return {
       action: "finish",
-      reason: `Standalone post for r/${target} passes the self-check. Ready for human review.`,
+      reason: `Standalone post for ${targetLabel} passes the self-check. Ready for human review.`,
     };
   }
 
@@ -199,6 +251,9 @@ function decideMock(ctx: AgentContext): AgentDecision {
   // Post goal skips the reply pipeline entirely.
   if (ctx.goal === "post") return decideMockPost(ctx, false);
 
+  const platformId = pickPlatformFor(ctx.topic);
+  const platform = getPlatform(platformId);
+
   // 1) Need search results (first attempt, or retry after a low-quality batch).
   const needsSearch =
     ctx.posts.length === 0 || (ctx.quality !== null && !ctx.quality.acceptable);
@@ -206,13 +261,17 @@ function decideMock(ctx: AgentContext): AgentDecision {
     const retrying = ctx.searchAttempts > 0;
     return {
       action: "call_tool",
-      toolName: "search_reddit",
-      input: { keywords: keywordsFor(ctx), subreddits: [...reddit.communities] },
+      toolName: "search_threads",
+      input: {
+        platform: platformId,
+        keywords: keywordsFor(ctx),
+        communities: [...platform.communities],
+      },
       reason: retrying
         ? ctx.posts.length === 0
           ? "The last search returned no posts. Retrying with broader keywords."
           : `Previous results scored ${ctx.quality?.score ?? 0} (below threshold). Retrying with broader keywords.`
-        : `Searching the curated subreddits for active discussions about "${ctx.topic}".`,
+        : `${platformReason(platformId, ctx.topic)} Searching its curated communities for active discussions.`,
     };
   }
 
@@ -241,7 +300,7 @@ function decideMock(ctx: AgentContext): AgentDecision {
     const bestId = ctx.quality?.bestPostId ?? ctx.posts[0].id;
     return {
       action: "call_tool",
-      toolName: "get_post_comments",
+      toolName: "get_thread_comments",
       input: { postId: bestId },
       reason: ctx.quality?.acceptable
         ? "Best candidate passed the quality bar. Reading its top comments to understand the discussion."
@@ -274,9 +333,9 @@ function decideMock(ctx: AgentContext): AgentDecision {
   if (ctx.rules === null) {
     return {
       action: "call_tool",
-      toolName: "check_subreddit_rules",
-      input: { subreddit: selected.subreddit },
-      reason: `Checking r/${selected.subreddit} tone guidelines so drafts match community norms.`,
+      toolName: "check_community_norms",
+      input: { platform: selected.platform, community: selected.community },
+      reason: `Checking ${formatCommunity(selected.platform, selected.community)} tone guidelines so drafts match community norms.`,
     };
   }
 

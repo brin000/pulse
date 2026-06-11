@@ -18,6 +18,8 @@ import {
   GoalBadge,
   MockBadge,
   OutcomeBadge,
+  PlatformBadge,
+  runPlatform,
   summarizeOutput,
 } from "@/components/RunBadges";
 import { ArrowLeftIcon } from "@/components/icons";
@@ -45,6 +47,7 @@ export default async function RunDetailPage({ params }: { params: { id: string }
 
   // Stored outcome → the terminal client status the result components expect.
   const status = run.outcome === "success" ? "finished" : "error";
+  const platform = runPlatform(run.result);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -62,6 +65,7 @@ export default async function RunDetailPage({ params }: { params: { id: string }
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <OutcomeBadge outcome={run.outcome} />
           <GoalBadge goal={run.goal} />
+          {platform && <PlatformBadge platform={platform} />}
           {run.source === "cron" && <CronBadge />}
           {run.mockLlm && <MockBadge />}
           <span className="font-mono text-[11px] tabular-nums text-secondary">

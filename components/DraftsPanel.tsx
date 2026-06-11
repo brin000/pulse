@@ -7,7 +7,9 @@
  * the human reviews, edits and decides what to publish.
  */
 import { useState } from "react";
-import type { Draft, SelfCheck, SubredditRules } from "@/lib/agent/schemas";
+import type { CommunityNorms, Draft, SelfCheck } from "@/lib/agent/schemas";
+// format.ts is dependency-free, safe in client bundles (no fetch/OAuth code).
+import { formatCommunity } from "@/lib/platforms/format";
 import { CheckIcon, CopyIcon, ShieldIcon } from "@/components/icons";
 
 const TONE_LABEL: Record<Draft["tone"], string> = {
@@ -50,7 +52,7 @@ export function DraftsPanel({
   rules,
 }: {
   drafts: Draft[];
-  rules: SubredditRules | null;
+  rules: CommunityNorms | null;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -138,7 +140,7 @@ export function DraftsPanel({
           {/* Small meta text uses secondary so it stays AA-readable on surface */}
           <h3 className="flex items-center gap-1.5 text-[12px] font-medium text-secondary">
             <ShieldIcon size={12} />
-            r/{rules.subreddit} norms applied
+            {formatCommunity(rules.platform, rules.community)} norms applied
           </h3>
           <ul className="mt-1.5 flex flex-col gap-1">
             {rules.hints.map((hint) => (

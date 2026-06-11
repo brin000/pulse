@@ -5,6 +5,10 @@
  * orchestrator against the Zod schemas in schemas.ts — executors can therefore
  * trust their (already validated) inputs and focus on doing one thing well.
  *
+ * Platform routing happens here: search/norms tools carry a `platform` id in
+ * their input and resolve the matching adapter via getPlatform; comment
+ * fetching routes by the platform already recorded on the post in context.
+ *
  * Two tools are LLM-backed (`evaluate_content_gap`, `draft_comment_reply`).
  * In mock mode they switch to deterministic implementations so the whole loop
  * runs without an API key. `evaluate_result_quality` is intentionally pure
@@ -14,7 +18,7 @@ import { AGENT_LIMITS } from "@/lib/config";
 import {
   contentGapSchema,
   draftSchema,
-  standalonePostSchema,
+  standalonePostContentSchema,
   type ContentGap,
   type Draft,
   type PostSummary,
@@ -25,6 +29,7 @@ import {
 } from "@/lib/agent/schemas";
 import type { AgentContext } from "@/lib/agent/types";
 import { getPlatform } from "@/lib/platforms";
+import { formatCommunity, PLATFORM_LABELS } from "@/lib/platforms/format";
 import { DRAFTING_POLICY, generateStructured } from "@/lib/agent/llm";
 import { z } from "zod";
 
@@ -46,19 +51,20 @@ function requirePost(ctx: AgentContext, postId: string): PostSummary {
 }
 
 /* ------------------------------------------------------------------ */
-/* 1. search_reddit                                                     */
+/* 1. search_threads                                                    */
 /* ------------------------------------------------------------------ */
 
-const execSearchReddit: ToolExecutor<"search_reddit"> = async (input, ctx) => {
-  // Platform is fixed to Reddit until P5-2 threads a platform id through
-  // tool inputs — the seam exists; only the routing key is hardcoded.
-  const { posts, source } = await getPlatform("reddit").searchThreads(
+const execSearchThreads: ToolExecutor<"search_threads"> = async (input, ctx) => {
+  // The platform id was validated (and its communities whitelist-checked)
+  // by the input schema, so routing through the registry is safe here.
+  const { posts, source } = await getPlatform(input.platform).searchThreads(
     input.keywords,
-    input.subreddits,
+    input.communities,
   );
   // Cron dedup happens HERE — before evaluate_result_quality ever sees the
   // posts — so an already-recommended thread can't win the scoring and force
-  // a "best candidate was excluded" special case downstream.
+  // a "best candidate was excluded" special case downstream. Platform id
+  // prefixes ("hn-") keep the exclusion set collision-free across platforms.
   const excluded = new Set(ctx.excludePostIds ?? []);
   return {
     posts: excluded.size > 0 ? posts.filter((p) => !excluded.has(p.id)) : posts,
@@ -109,12 +115,14 @@ const execEvaluateQuality: ToolExecutor<"evaluate_result_quality"> = async (
 };
 
 /* ------------------------------------------------------------------ */
-/* 3. get_post_comments                                                 */
+/* 3. get_thread_comments                                               */
 /* ------------------------------------------------------------------ */
 
-const execGetComments: ToolExecutor<"get_post_comments"> = async (input, ctx) => {
-  requirePost(ctx, input.postId);
-  const { comments, source } = await getPlatform("reddit").getComments(input.postId);
+const execGetComments: ToolExecutor<"get_thread_comments"> = async (input, ctx) => {
+  // The post in context knows which platform it came from — route by that,
+  // not by asking the model to repeat itself (it could drift).
+  const post = requirePost(ctx, input.postId);
+  const { comments, source } = await getPlatform(post.platform).getComments(post.id);
   return { comments, source };
 };
 
@@ -145,7 +153,7 @@ const execEvaluateGap: ToolExecutor<"evaluate_content_gap"> = async (input, ctx)
   const gap: ContentGap = await generateStructured({
     schema: contentGapSchema,
     system:
-      "You analyze a Reddit discussion and identify which useful angles are already covered and what is genuinely missing. Be specific; avoid generic angles.",
+      "You analyze an online discussion thread and identify which useful angles are already covered and what is genuinely missing. Be specific; avoid generic angles.",
     prompt: [
       `Topic the user cares about: ${ctx.topic}`,
       `Thread title: ${post.title}`,
@@ -160,13 +168,14 @@ const execEvaluateGap: ToolExecutor<"evaluate_content_gap"> = async (input, ctx)
 };
 
 /* ------------------------------------------------------------------ */
-/* 5. check_subreddit_rules (curated local hints by design)             */
+/* 5. check_community_norms (curated local hints by design)             */
 /* ------------------------------------------------------------------ */
 
-const execCheckRules: ToolExecutor<"check_subreddit_rules"> = async (input) => {
+const execCheckNorms: ToolExecutor<"check_community_norms"> = async (input) => {
   return {
-    subreddit: input.subreddit,
-    hints: getPlatform("reddit").communityNorms(input.subreddit),
+    platform: input.platform,
+    community: input.community,
+    hints: getPlatform(input.platform).communityNorms(input.community),
   };
 };
 
@@ -205,9 +214,9 @@ const execDraftReply: ToolExecutor<"draft_comment_reply"> = async (input, ctx) =
     schema: z.object({ drafts: z.array(draftSchema).min(2).max(3) }),
     system: DRAFTING_POLICY,
     prompt: [
-      `Write 2-3 Reddit comment reply drafts (different tones: practical / experience-based / curious).`,
-      `Target subreddit: r/${post.subreddit}`,
-      `Subreddit norms: ${hints.join(" ")}`,
+      `Write 2-3 comment reply drafts (different tones: practical / experience-based / curious).`,
+      `Target community: ${formatCommunity(post.platform, post.community)} on ${PLATFORM_LABELS[post.platform]}`,
+      `Community norms: ${hints.join(" ")}`,
       `Thread title: ${post.title}`,
       `Thread snippet: ${post.snippet}`,
       `Top comments already in the thread:`,
@@ -230,19 +239,22 @@ const execDraftStandalonePost: ToolExecutor<"draft_standalone_post"> = async (
 ) => {
   // Norms only apply when they were fetched for the same target community.
   const hints =
-    ctx.rules?.subreddit === input.subreddit
+    ctx.rules?.platform === input.platform && ctx.rules?.community === input.community
       ? ctx.rules.hints
-      : getPlatform("reddit").communityNorms(input.subreddit);
+      : getPlatform(input.platform).communityNorms(input.community);
+  const target = formatCommunity(input.platform, input.community);
 
   if (ctx.mockLlm) {
     // Deterministic post mirroring what the live drafter produces: a lessons-
     // learned write-up anchored on the user's topic, no self-promotion.
     const post: StandalonePost = {
+      platform: input.platform,
+      community: input.community,
       title: `What I learned trying to stay on top of "${ctx.topic.slice(0, 120)}" without losing my build time`,
       body: [
         `I care about ${ctx.topic}, but keeping up with the discussions around it was eating my mornings. So I treated it like an engineering problem and want to share what actually worked.`,
         ``,
-        `1. Scope beats volume. Watching a handful of communities deeply beats skimming all of Reddit. Fewer sources, better signal.`,
+        `1. Scope beats volume. Watching a handful of communities deeply beats skimming everything. Fewer sources, better signal.`,
         `2. Decide what "worth engaging" means up front. For me: the thread is younger than ~48h and still getting comments. Everything else is archaeology.`,
         `3. Write from experience or don't write. The comments that landed were the ones where I shared a concrete trade-off I had hit myself — never the summary-style ones.`,
         ``,
@@ -255,17 +267,18 @@ const execDraftStandalonePost: ToolExecutor<"draft_standalone_post"> = async (
   }
 
   // Real mode: same drafting policy as replies — an original post is still
-  // judged by the community's no-stealth-marketing bar.
+  // judged by the community's no-stealth-marketing bar. The model drafts
+  // content only; the validated target fields are stamped on afterwards.
   const result = await generateStructured({
-    schema: z.object({ post: standalonePostSchema }),
+    schema: z.object({ post: standalonePostContentSchema }),
     system: DRAFTING_POLICY,
     prompt: [
-      `Write ONE original Reddit post (title + body) for r/${input.subreddit}.`,
-      `Subreddit norms: ${hints.join(" ")}`,
+      `Write ONE original post (title + body) for ${target} on ${PLATFORM_LABELS[input.platform]}.`,
+      `Community norms: ${hints.join(" ")}`,
       `Topic the user cares about: ${ctx.topic}`,
       ctx.posts.length > 0
         ? `Recent discussions in these communities (context, do not copy):\n${ctx.posts
-            .map((p) => `- r/${p.subreddit}: ${p.title}`)
+            .map((p) => `- ${formatCommunity(p.platform, p.community)}: ${p.title}`)
             .join("\n")}`
         : `No recent threads cover this topic — the post should open that conversation.`,
       ``,
@@ -273,7 +286,9 @@ const execDraftStandalonePost: ToolExecutor<"draft_standalone_post"> = async (
       `The post must read like a real community member sharing experience, invite discussion (end with a genuine question), and pass your own self-check for tone match, usefulness, and spam risk.`,
     ].join("\n"),
   });
-  return result;
+  return {
+    post: { ...result.post, platform: input.platform, community: input.community },
+  };
 };
 
 /* ------------------------------------------------------------------ */
@@ -281,11 +296,11 @@ const execDraftStandalonePost: ToolExecutor<"draft_standalone_post"> = async (
 /* ------------------------------------------------------------------ */
 
 export const toolExecutors: { [K in ToolName]: ToolExecutor<K> } = {
-  search_reddit: execSearchReddit,
+  search_threads: execSearchThreads,
   evaluate_result_quality: execEvaluateQuality,
-  get_post_comments: execGetComments,
+  get_thread_comments: execGetComments,
   evaluate_content_gap: execEvaluateGap,
-  check_subreddit_rules: execCheckRules,
+  check_community_norms: execCheckNorms,
   draft_comment_reply: execDraftReply,
   draft_standalone_post: execDraftStandalonePost,
 };

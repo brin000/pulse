@@ -6,7 +6,16 @@
  * disabled+spinner while running, button height ≥ 44px.
  */
 import { useState, type FormEvent } from "react";
-import { SUBREDDIT_WHITELIST } from "@/lib/platforms/reddit/communities";
+// Both communities modules and format.ts are dependency-free by design —
+// importing them here never drags server-only fetch/OAuth code into the bundle.
+import {
+  formatRedditCommunity,
+  SUBREDDIT_WHITELIST,
+} from "@/lib/platforms/reddit/communities";
+import {
+  formatHnCommunity,
+  HN_COMMUNITIES,
+} from "@/lib/platforms/hackernews/communities";
 import type { RunGoal } from "@/lib/agent/schemas";
 import type { RunStatus } from "@/hooks/useAgentRun";
 import { PlayIcon } from "@/components/icons";
@@ -28,9 +37,21 @@ const GOAL_OPTIONS: Array<{ value: RunGoal; label: string; hint: string }> = [
   {
     value: "post",
     label: "Post only",
-    hint: "Skips thread hunting and drafts an original post for the best subreddit.",
+    hint: "Skips thread hunting and drafts an original post for the best community.",
   },
 ];
+
+/** The curated whitelist per platform, disclosed as part of the product (ADR-0002/0005). */
+const PLATFORM_COMMUNITY_GROUPS = [
+  {
+    label: "Reddit",
+    communities: SUBREDDIT_WHITELIST.map(formatRedditCommunity),
+  },
+  {
+    label: "Hacker News",
+    communities: HN_COMMUNITIES.map(formatHnCommunity),
+  },
+] as const;
 
 export function TopicForm({
   status,
@@ -55,7 +76,8 @@ export function TopicForm({
         What do you want to talk about?
       </label>
       <p className="mt-1 text-[12px] leading-relaxed text-secondary">
-        Pulse scans the curated subreddits for live discussions worth joining and
+        Pulse picks the platform that fits your topic — Reddit or Hacker News —
+        scans its curated communities for live discussions worth joining, and
         drafts replies you can review.
       </p>
 
@@ -124,19 +146,25 @@ export function TopicForm({
         )}
       </button>
 
-      {/* The curated whitelist, disclosed as part of the product (ADR-0002) */}
-      <div className="mt-4 border-t border-line pt-3">
-        <h3 className="text-[12px] font-medium text-secondary">Curated subreddits</h3>
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {SUBREDDIT_WHITELIST.map((sub) => (
-            <li
-              key={sub}
-              className="rounded-full border border-line bg-raised px-2.5 py-0.5 font-mono text-[11px] text-secondary"
-            >
-              r/{sub}
-            </li>
-          ))}
-        </ul>
+      {/* The curated whitelists, disclosed as part of the product (ADR-0002/0005) */}
+      <div className="mt-4 flex flex-col gap-3 border-t border-line pt-3">
+        {PLATFORM_COMMUNITY_GROUPS.map((group) => (
+          <div key={group.label}>
+            <h3 className="text-[12px] font-medium text-secondary">
+              Curated {group.label} communities
+            </h3>
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {group.communities.map((community) => (
+                <li
+                  key={community}
+                  className="rounded-full border border-line bg-raised px-2.5 py-0.5 font-mono text-[11px] text-secondary"
+                >
+                  {community}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
     </form>
   );

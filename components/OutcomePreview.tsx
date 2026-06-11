@@ -11,7 +11,7 @@ const OUTCOMES = [
   {
     icon: MessagesIcon,
     title: "Selected thread",
-    body: "A live Reddit discussion still worth joining, with score and activity context.",
+    body: "A live Reddit or Hacker News discussion still worth joining, with score and activity context.",
   },
   {
     icon: LightbulbIcon,
@@ -30,8 +30,9 @@ export function OutcomePreview() {
     <section className="rounded-xl border border-line bg-surface/60 p-4 shadow-[inset_0_1px_0_rgb(var(--text-primary)/0.04)]">
       <h2 className="mb-1 text-base font-semibold text-primary">What you&apos;ll get</h2>
       <p className="mb-4 text-[13px] text-secondary">
-        Enter a topic and run the agent. Pulse scans curated subreddits, reads the
-        room, and drafts replies for manual review.
+        Enter a topic and run the agent. Pulse picks the platform that fits,
+        scans its curated communities, reads the room, and drafts replies for
+        manual review.
       </p>
 
       <RunStepper status="idle" events={[]} result={null} />

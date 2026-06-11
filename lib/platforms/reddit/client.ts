@@ -67,7 +67,8 @@ function compressPost(child: any, subreddit: Subreddit): PostSummary | null {
   if (!d?.id || !d?.title) return null;
   return {
     id: String(d.id),
-    subreddit,
+    platform: "reddit",
+    community: subreddit,
     title: String(d.title).slice(0, 300),
     score: Number(d.score ?? 0),
     numComments: Number(d.num_comments ?? 0),
@@ -153,7 +154,7 @@ export async function getPostComments(postId: string): Promise<CommentsResult> {
 /** Keyword/subreddit filter over the mock corpus, mirroring real search behavior. */
 function filterMockPosts(keywords: string[], subreddits: Subreddit[]): PostSummary[] {
   const words = keywords.map((k) => k.toLowerCase());
-  const inScope = MOCK_POSTS.filter((p) => subreddits.includes(p.subreddit));
+  const inScope = MOCK_POSTS.filter((p) => subreddits.includes(p.community as Subreddit));
   // No match stays empty on purpose: an honest "nothing found" is what lets
   // the auto goal pivot to a standalone post (and reply-only fail truthfully)
   // instead of replying to threads unrelated to the topic.

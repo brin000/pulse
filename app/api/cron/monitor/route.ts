@@ -16,8 +16,10 @@
  *     leads the queue on the next scheduled tick.
  *
  * Dedup: each topic's previously recommended post ids (seen_posts) are
- * injected as the run's exclusion set, filtered inside search_reddit BEFORE
+ * injected as the run's exclusion set, filtered inside search_threads BEFORE
  * quality scoring — the cron can never recommend the same thread twice.
+ * Hacker News ids carry an "hn-" prefix, so the set is collision-free
+ * across platforms.
  *
  * Notifications carry a quality gate: only a successful run that actually
  * produced something (drafts or a standalone post) creates an inbox row and
@@ -37,6 +39,7 @@ import {
   touchTopicLastRun,
 } from "@/lib/db";
 import { sendRunEmail } from "@/lib/notify";
+import { formatCommunity } from "@/lib/platforms/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,11 +72,12 @@ function startOfUtcDay(): number {
 /** Notification copy: lead with the concrete deliverable, not "a run happened". */
 function notificationContent(topic: string, result: RunResult) {
   if (result.drafts.length > 0 && result.selectedPost) {
+    const p = result.selectedPost;
     return {
       title: `${result.drafts.length} new draft${result.drafts.length === 1 ? "" : "s"} for "${topic}"`,
-      body: `Recommended thread in r/${result.selectedPost.subreddit}: "${result.selectedPost.title}"`,
-      headline: `Recommended thread: ${result.selectedPost.title}`,
-      threadUrl: result.selectedPost.url,
+      body: `Recommended thread in ${formatCommunity(p.platform, p.community)}: "${p.title}"`,
+      headline: `Recommended thread: ${p.title}`,
+      threadUrl: p.url,
     };
   }
   // Quality gate guarantees standalonePost exists on this branch.
