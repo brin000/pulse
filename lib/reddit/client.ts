@@ -1,8 +1,11 @@
 /**
- * Reddit public API wrapper (no auth required).
+ * Reddit API wrapper.
  *
  * Responsibilities:
- *   1. Search whitelisted subreddits and fetch top comments.
+ *   1. Search whitelisted subreddits and fetch top comments — via OAuth
+ *      (oauth.reddit.com) when credentials are configured, anonymously
+ *      (www.reddit.com) otherwise. Anonymous access works locally but is
+ *      blocked from data-center IPs, so production should set credentials.
  *   2. Compress raw Reddit JSON into PostSummary / CommentSummary immediately —
  *      raw API payloads never reach the agent context or the LLM. This is the
  *      "context compression before every LLM call" decision from the README.
@@ -11,9 +14,13 @@
  */
 import { AGENT_LIMITS, isMockReddit, type Subreddit } from "@/lib/config";
 import type { CommentSummary, PostSummary } from "@/lib/agent/schemas";
+import { getRedditAccessToken, hasRedditCredentials } from "@/lib/reddit/auth";
 import { MOCK_COMMENTS, MOCK_POSTS } from "@/lib/reddit/mock-data";
 
-const REDDIT_BASE = "https://www.reddit.com";
+const ANON_BASE = "https://www.reddit.com";
+const OAUTH_BASE = "https://oauth.reddit.com";
+/** Post permalinks shown to the user always point at the public site. */
+const PUBLIC_BASE = "https://www.reddit.com";
 /** Identify ourselves politely; Reddit throttles anonymous default agents hard. */
 const USER_AGENT = "pulse-mvp/0.1 (on-demand reddit discussion finder)";
 const FETCH_TIMEOUT_MS = 8000;
@@ -28,10 +35,22 @@ interface CommentsResult {
   source: "live" | "mock";
 }
 
-/** fetch with a hard timeout so a slow Reddit response can't stall the agent loop. */
-async function fetchJson(url: string): Promise<unknown> {
+/**
+ * Fetch a Reddit API path (e.g. "/r/webdev/search.json?...") with a hard
+ * timeout so a slow response can't stall the agent loop. Uses the OAuth host
+ * + Bearer token when credentials are configured, anonymous host otherwise.
+ */
+async function fetchJson(path: string): Promise<unknown> {
+  const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+  let base = ANON_BASE;
+  if (hasRedditCredentials()) {
+    headers.Authorization = `Bearer ${await getRedditAccessToken()}`;
+    base = OAUTH_BASE;
+  }
+
+  const url = `${base}${path}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
+    headers,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     cache: "no-store",
   });
@@ -52,7 +71,7 @@ function compressPost(child: any, subreddit: Subreddit): PostSummary | null {
     score: Number(d.score ?? 0),
     numComments: Number(d.num_comments ?? 0),
     ageHours: Math.max(0, (Date.now() / 1000 - Number(d.created_utc ?? 0)) / 3600),
-    url: `${REDDIT_BASE}${d.permalink ?? ""}`,
+    url: `${PUBLIC_BASE}${d.permalink ?? ""}`,
     // Keep only a short preview of the body — full text is token waste.
     snippet: String(d.selftext ?? "").replace(/\s+/g, " ").slice(0, 280),
   };
@@ -76,7 +95,7 @@ export async function searchReddit(
     const listings = await Promise.all(
       subreddits.map((sub) =>
         fetchJson(
-          `${REDDIT_BASE}/r/${sub}/search.json?q=${query}&restrict_sr=1&sort=relevance&t=week&limit=8`,
+          `/r/${sub}/search.json?q=${query}&restrict_sr=1&sort=relevance&t=week&limit=8`,
         ).then((json: any) => ({ sub, children: json?.data?.children ?? [] })),
       ),
     );
@@ -111,7 +130,7 @@ export async function getPostComments(postId: string): Promise<CommentsResult> {
 
   try {
     const json: any = await fetchJson(
-      `${REDDIT_BASE}/comments/${postId}.json?sort=top&limit=${AGENT_LIMITS.maxCommentsInContext}&depth=1`,
+      `/comments/${postId}.json?sort=top&limit=${AGENT_LIMITS.maxCommentsInContext}&depth=1`,
     );
     // Reddit returns [postListing, commentListing]; we only need the comments.
     const children: any[] = json?.[1]?.data?.children ?? [];

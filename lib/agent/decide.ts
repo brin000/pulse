@@ -9,7 +9,7 @@
  * with honest `reason`s, so the full loop (validation, SSE, UI) is exercised
  * without an API key.
  */
-import { AGENT_LIMITS, SUBREDDIT_WHITELIST, isMockLlm } from "@/lib/config";
+import { AGENT_LIMITS, SUBREDDIT_WHITELIST } from "@/lib/config";
 import {
   agentDecisionSchema,
   TOOL_NAMES,
@@ -19,7 +19,7 @@ import type { AgentContext } from "@/lib/agent/types";
 import { generateStructured } from "@/lib/agent/llm";
 
 export async function decideNextAction(ctx: AgentContext): Promise<AgentDecision> {
-  return isMockLlm() ? decideMock(ctx) : decideWithModel(ctx);
+  return ctx.mockLlm ? decideMock(ctx) : decideWithModel(ctx);
 }
 
 /* ------------------------------------------------------------------ */

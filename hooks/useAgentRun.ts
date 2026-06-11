@@ -80,10 +80,15 @@ export function useAgentRun() {
     setState({ ...INITIAL, status: "running" });
 
     try {
+      // Unlock token for live LLM mode on gated deployments: visiting the
+      // page as /?live=<token> forwards it with every run request.
+      const liveToken =
+        new URLSearchParams(window.location.search).get("live") ?? undefined;
+
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({ topic, liveToken }),
         signal: controller.signal,
       });
 

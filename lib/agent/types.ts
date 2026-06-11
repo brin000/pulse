@@ -22,6 +22,12 @@ import type {
  */
 export interface AgentContext {
   topic: string;
+  /**
+   * Whether this run uses mock LLM decisions. Decided per request by the API
+   * route (no API key, PULSE_MOCK, or an unauthorized visitor on a gated
+   * deployment) — never read from global env below the route layer.
+   */
+  mockLlm: boolean;
   /** Iterations executed so far (bounded by AGENT_LIMITS.maxSteps). */
   steps: number;
   searchAttempts: number;

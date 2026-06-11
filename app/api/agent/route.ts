@@ -11,19 +11,39 @@
  */
 import { z } from "zod";
 import { runAgent } from "@/lib/agent/orchestrator";
-import { isMockLlm } from "@/lib/config";
+import { isLiveLlmAuthorized, isMockLlm } from "@/lib/config";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { SSE_HEADERS, sseMessage } from "@/lib/sse";
 
 // Streaming requires the Node.js runtime; static optimization must be off.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// One run = several sequential LLM calls; the platform default would cut
+// live runs off mid-stream.
+export const maxDuration = 300;
 
 /** Validate user input at the system boundary. */
 const requestSchema = z.object({
   topic: z.string().trim().min(3, "Topic must be at least 3 characters").max(200),
+  /** Optional unlock token for live LLM mode on gated deployments. */
+  liveToken: z.string().max(200).optional(),
 });
 
+/** Best-effort client key for rate limiting (first hop of x-forwarded-for). */
+function clientKey(req: Request): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  return fwd?.split(",")[0]?.trim() || "local";
+}
+
 export async function POST(req: Request) {
+  const limit = checkRateLimit(clientKey(req));
+  if (!limit.allowed) {
+    return Response.json(
+      { error: "Too many runs from this address. Please wait a few minutes." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec ?? 60) } },
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) {
@@ -32,7 +52,10 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { topic } = parsed.data;
+  const { topic, liveToken } = parsed.data;
+  // Per-request mode: env says whether live is possible at all, the token
+  // gate says whether THIS visitor may spend real LLM credits.
+  const mockLlm = isMockLlm() || !isLiveLlmAuthorized(liveToken);
 
   // Aborts the agent loop when the client goes away, via either path:
   // the request itself being aborted, or the response stream being cancelled.
@@ -51,12 +74,12 @@ export async function POST(req: Request) {
       };
 
       // Tell the UI up front whether this run uses mock or live LLM decisions.
-      send("mode", { mockLlm: isMockLlm() });
+      send("mode", { mockLlm });
 
       // Pessimistic default: only a run that returns normally flips it.
       let outcome: "success" | "failed" = "failed";
       try {
-        const result = await runAgent(topic, (event) => send("timeline", event), abort.signal);
+        const result = await runAgent(topic, (event) => send("timeline", event), abort.signal, mockLlm);
         outcome = result.outcome;
         send("result", result);
       } catch (err) {

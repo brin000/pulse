@@ -18,6 +18,7 @@ import { OutcomePreview } from "@/components/OutcomePreview";
 import { ExecutionSection } from "@/components/ExecutionSection";
 import { TimelineCollapsible } from "@/components/TimelineCollapsible";
 import { ResultPanels } from "@/components/ResultPanels";
+import { ExportRunButton } from "@/components/ExportRunButton";
 import { AlertIcon, ShieldIcon, PlayIcon, CheckIcon, GaugeIcon } from "@/components/icons";
 
 /** Product promises, restated at the bottom of every page state. */
@@ -144,6 +145,11 @@ export default function HomePage() {
           {idle && <OutcomePreview />}
           {running && <ExecutionSection status={status} events={events} result={result} />}
           <ResultPanels status={status} result={result} />
+          {terminal && result && (
+            <div className="flex justify-end">
+              <ExportRunButton result={result} />
+            </div>
+          )}
           {terminal && events.length > 0 && (
             <TimelineCollapsible status={status} events={events} result={result} />
           )}

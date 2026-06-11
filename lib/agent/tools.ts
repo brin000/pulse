@@ -10,7 +10,7 @@
  * runs without an API key. `evaluate_result_quality` is intentionally pure
  * code: a transparent scoring heuristic the agent reacts to, not a black box.
  */
-import { AGENT_LIMITS, SUBREDDIT_RULE_HINTS, isMockLlm } from "@/lib/config";
+import { AGENT_LIMITS, SUBREDDIT_RULE_HINTS } from "@/lib/config";
 import {
   contentGapSchema,
   draftSchema,
@@ -111,7 +111,7 @@ const execGetComments: ToolExecutor<"get_post_comments"> = async (input, ctx) =>
 const execEvaluateGap: ToolExecutor<"evaluate_content_gap"> = async (input, ctx) => {
   const post = requirePost(ctx, input.postId);
 
-  if (isMockLlm()) {
+  if (ctx.mockLlm) {
     // Deterministic gap analysis keyed off what mock comments already cover.
     return {
       coveredAngles: [
@@ -164,7 +164,7 @@ const execDraftReply: ToolExecutor<"draft_comment_reply"> = async (input, ctx) =
   const post = requirePost(ctx, input.postId);
   const hints = ctx.rules?.hints ?? [];
 
-  if (isMockLlm()) {
+  if (ctx.mockLlm) {
     // Three tones, same angle — mirrors what the live drafter produces.
     const drafts: Draft[] = [
       {

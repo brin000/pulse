@@ -83,6 +83,20 @@ export function isMockLlm(): boolean {
   return !process.env.ANTHROPIC_API_KEY || process.env.PULSE_MOCK === "1";
 }
 
+/**
+ * Gate for spending real LLM tokens on a public deployment.
+ *
+ * When PULSE_LIVE_TOKEN is set, a request must present the matching token
+ * (`?live=<token>` on the page → request body) to run in live mode; everyone
+ * else gets the full experience in mock mode. Unset = live mode is open,
+ * which is the right default for local development.
+ */
+export function isLiveLlmAuthorized(token: string | null | undefined): boolean {
+  const gate = process.env.PULSE_LIVE_TOKEN;
+  if (!gate) return true;
+  return token === gate;
+}
+
 export function isMockReddit(): boolean {
   return process.env.PULSE_MOCK_REDDIT === "1";
 }

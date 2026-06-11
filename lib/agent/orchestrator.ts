@@ -47,9 +47,10 @@ function makeEvent(opts: {
   };
 }
 
-function freshContext(topic: string): AgentContext {
+function freshContext(topic: string, mockLlm: boolean): AgentContext {
   return {
     topic,
+    mockLlm,
     steps: 0,
     searchAttempts: 0,
     draftAttempts: 0,
@@ -174,13 +175,15 @@ function attemptLimitViolation(ctx: AgentContext, toolName: ToolName): string | 
  * Run one complete agent loop for a topic, emitting timeline events along the
  * way. Returns the final RunResult (also emitted by the API route as SSE).
  * `signal` aborts the loop between steps (e.g. the client disconnected).
+ * `mockLlm` pins the decision mode for the whole run (route-level policy).
  */
 export async function runAgent(
   topic: string,
   emit: EmitFn,
   signal?: AbortSignal,
+  mockLlm: boolean = false,
 ): Promise<RunResult> {
-  let ctx = freshContext(topic);
+  let ctx = freshContext(topic, mockLlm);
   // Flipped on any abnormal termination (fail action, decision error,
   // cancellation, step cap) — becomes the structured RunResult.outcome.
   let failed = false;
