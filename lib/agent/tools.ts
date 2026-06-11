@@ -10,7 +10,7 @@
  * runs without an API key. `evaluate_result_quality` is intentionally pure
  * code: a transparent scoring heuristic the agent reacts to, not a black box.
  */
-import { AGENT_LIMITS, SUBREDDIT_RULE_HINTS } from "@/lib/config";
+import { AGENT_LIMITS } from "@/lib/config";
 import {
   contentGapSchema,
   draftSchema,
@@ -24,7 +24,7 @@ import {
   type ToolOutput,
 } from "@/lib/agent/schemas";
 import type { AgentContext } from "@/lib/agent/types";
-import { getPostComments, searchReddit } from "@/lib/reddit/client";
+import { getPlatform } from "@/lib/platforms";
 import { DRAFTING_POLICY, generateStructured } from "@/lib/agent/llm";
 import { z } from "zod";
 
@@ -50,7 +50,12 @@ function requirePost(ctx: AgentContext, postId: string): PostSummary {
 /* ------------------------------------------------------------------ */
 
 const execSearchReddit: ToolExecutor<"search_reddit"> = async (input, ctx) => {
-  const { posts, source } = await searchReddit(input.keywords, input.subreddits);
+  // Platform is fixed to Reddit until P5-2 threads a platform id through
+  // tool inputs — the seam exists; only the routing key is hardcoded.
+  const { posts, source } = await getPlatform("reddit").searchThreads(
+    input.keywords,
+    input.subreddits,
+  );
   // Cron dedup happens HERE — before evaluate_result_quality ever sees the
   // posts — so an already-recommended thread can't win the scoring and force
   // a "best candidate was excluded" special case downstream.
@@ -109,7 +114,7 @@ const execEvaluateQuality: ToolExecutor<"evaluate_result_quality"> = async (
 
 const execGetComments: ToolExecutor<"get_post_comments"> = async (input, ctx) => {
   requirePost(ctx, input.postId);
-  const { comments, source } = await getPostComments(input.postId);
+  const { comments, source } = await getPlatform("reddit").getComments(input.postId);
   return { comments, source };
 };
 
@@ -161,7 +166,7 @@ const execEvaluateGap: ToolExecutor<"evaluate_content_gap"> = async (input, ctx)
 const execCheckRules: ToolExecutor<"check_subreddit_rules"> = async (input) => {
   return {
     subreddit: input.subreddit,
-    hints: SUBREDDIT_RULE_HINTS[input.subreddit],
+    hints: getPlatform("reddit").communityNorms(input.subreddit),
   };
 };
 
@@ -227,7 +232,7 @@ const execDraftStandalonePost: ToolExecutor<"draft_standalone_post"> = async (
   const hints =
     ctx.rules?.subreddit === input.subreddit
       ? ctx.rules.hints
-      : SUBREDDIT_RULE_HINTS[input.subreddit];
+      : getPlatform("reddit").communityNorms(input.subreddit);
 
   if (ctx.mockLlm) {
     // Deterministic post mirroring what the live drafter produces: a lessons-

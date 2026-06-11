@@ -7,7 +7,9 @@
  *      before anything executes. Raw model output is never trusted directly.
  */
 import { z } from "zod";
-import { SUBREDDIT_WHITELIST } from "@/lib/config";
+// Imported from the dependency-free communities module (not the adapter) so
+// the zod enum keeps the literal tuple type and no server code leaks here.
+import { SUBREDDIT_WHITELIST } from "@/lib/platforms/reddit/communities";
 
 /* ------------------------------------------------------------------ */
 /* Shared primitives                                                    */

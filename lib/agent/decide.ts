@@ -9,7 +9,9 @@
  * with honest `reason`s, so the full loop (validation, SSE, UI) is exercised
  * without an API key.
  */
-import { AGENT_LIMITS, SUBREDDIT_WHITELIST, type Subreddit } from "@/lib/config";
+import { AGENT_LIMITS } from "@/lib/config";
+import { getPlatform } from "@/lib/platforms";
+import type { Subreddit } from "@/lib/platforms/reddit/communities";
 import {
   agentDecisionSchema,
   TOOL_NAMES,
@@ -17,6 +19,13 @@ import {
 } from "@/lib/agent/schemas";
 import type { AgentContext } from "@/lib/agent/types";
 import { generateStructured } from "@/lib/agent/llm";
+
+/**
+ * Decisions are Reddit-only until P5-2 threads a platform id through the run;
+ * the whitelist is read from the adapter so this file no longer hardcodes
+ * platform knowledge beyond the routing key.
+ */
+const reddit = getPlatform("reddit");
 
 export async function decideNextAction(ctx: AgentContext): Promise<AgentDecision> {
   return ctx.mockLlm ? decideMock(ctx) : decideWithModel(ctx);
@@ -75,7 +84,7 @@ async function decideWithModel(ctx: AgentContext): Promise<AgentDecision> {
       `Available tools: ${TOOL_NAMES.join(", ")}.`,
       // The decision schema can't describe per-tool inputs, so spell them out.
       "Tool inputs: search_reddit {keywords: string[], subreddits: string[]} · evaluate_result_quality {} (scores posts already in context) · get_post_comments {postId} · evaluate_content_gap {postId} · check_subreddit_rules {subreddit} · draft_comment_reply {postId, angle} · draft_standalone_post {subreddit, angle}.",
-      `Allowed subreddits: ${SUBREDDIT_WHITELIST.join(", ")}.`,
+      `Allowed subreddits: ${reddit.communities.join(", ")}.`,
       "The run state includes `goal`, which selects the flow:",
       "- goal=reply: search_reddit -> evaluate_result_quality -> (retry search with refined keywords if low quality) -> get_post_comments on the best post -> evaluate_content_gap -> check_subreddit_rules -> draft_comment_reply -> finish.",
       "- goal=post: optionally search_reddit once for context, then pick the best-fitting allowed subreddit -> check_subreddit_rules -> draft_standalone_post -> finish. Skip post selection, comments and gap analysis.",
@@ -112,11 +121,12 @@ function keywordsFor(ctx: AgentContext): string[] {
  * match topic words against whitelist names (plus a few topical aliases),
  * fall back to the first whitelist entry so the choice always succeeds.
  */
-function pickSubredditFor(topic: string): Subreddit {
+function pickSubredditFor(topic: string): string {
   const haystack = topic.toLowerCase();
-  for (const sub of SUBREDDIT_WHITELIST) {
+  for (const sub of reddit.communities) {
     if (haystack.includes(sub.toLowerCase())) return sub;
   }
+  // Alias values keep the Subreddit type so a typo here fails compilation.
   const aliases: Array<[RegExp, Subreddit]> = [
     [/\b(llm|llama|local model)/, "LocalLLaMA"],
     [/\b(ai|agent|model)/, "artificial"],
@@ -127,7 +137,7 @@ function pickSubredditFor(topic: string): Subreddit {
   for (const [pattern, sub] of aliases) {
     if (pattern.test(haystack)) return sub;
   }
-  return SUBREDDIT_WHITELIST[0];
+  return reddit.communities[0];
 }
 
 /**
@@ -142,7 +152,7 @@ function decideMockPost(ctx: AgentContext, pivoted: boolean): AgentDecision {
     return {
       action: "call_tool",
       toolName: "search_reddit",
-      input: { keywords: keywordsFor(ctx), subreddits: [...SUBREDDIT_WHITELIST] },
+      input: { keywords: keywordsFor(ctx), subreddits: [...reddit.communities] },
       reason: `Goal is an original post. Scanning the curated subreddits once to understand what is already being discussed about "${ctx.topic}".`,
     };
   }
@@ -197,7 +207,7 @@ function decideMock(ctx: AgentContext): AgentDecision {
     return {
       action: "call_tool",
       toolName: "search_reddit",
-      input: { keywords: keywordsFor(ctx), subreddits: [...SUBREDDIT_WHITELIST] },
+      input: { keywords: keywordsFor(ctx), subreddits: [...reddit.communities] },
       reason: retrying
         ? ctx.posts.length === 0
           ? "The last search returned no posts. Retrying with broader keywords."

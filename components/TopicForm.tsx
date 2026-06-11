@@ -6,7 +6,7 @@
  * disabled+spinner while running, button height ≥ 44px.
  */
 import { useState, type FormEvent } from "react";
-import { SUBREDDIT_WHITELIST } from "@/lib/config";
+import { SUBREDDIT_WHITELIST } from "@/lib/platforms/reddit/communities";
 import type { RunGoal } from "@/lib/agent/schemas";
 import type { RunStatus } from "@/hooks/useAgentRun";
 import { PlayIcon } from "@/components/icons";

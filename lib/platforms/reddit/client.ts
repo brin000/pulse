@@ -12,10 +12,11 @@
  *   3. Fall back to deterministic mock data when the API is unreachable, and
  *      label the result `source: "mock"` so the UI can disclose it.
  */
-import { AGENT_LIMITS, isMockReddit, type Subreddit } from "@/lib/config";
+import { AGENT_LIMITS, isMockReddit } from "@/lib/config";
 import type { CommentSummary, PostSummary } from "@/lib/agent/schemas";
-import { getRedditAccessToken, hasRedditCredentials } from "@/lib/reddit/auth";
-import { MOCK_COMMENTS, MOCK_POSTS } from "@/lib/reddit/mock-data";
+import { getRedditAccessToken, hasRedditCredentials } from "@/lib/platforms/reddit/auth";
+import { type Subreddit } from "@/lib/platforms/reddit/communities";
+import { MOCK_COMMENTS, MOCK_POSTS } from "@/lib/platforms/reddit/mock-data";
 
 const ANON_BASE = "https://www.reddit.com";
 const OAUTH_BASE = "https://oauth.reddit.com";
