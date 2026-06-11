@@ -16,6 +16,10 @@
 # UI iteration screenshots (local verification artifacts)
 /.ui-iterations
 
+# local run-history database (DATABASE_URL defaults to file:.data/pulse.db)
+/.data
+*.db
+
 # misc
 .DS_Store
 *.tsbuildinfo

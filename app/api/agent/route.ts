@@ -12,7 +12,9 @@
 import { z } from "zod";
 import { runAgent } from "@/lib/agent/orchestrator";
 import { runGoalSchema } from "@/lib/agent/schemas";
+import type { TimelineEvent } from "@/lib/agent/types";
 import { isLiveLlmAuthorized, isMockLlm } from "@/lib/config";
+import { saveRun } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { SSE_HEADERS, sseMessage } from "@/lib/sse";
 
@@ -79,12 +81,27 @@ export async function POST(req: Request) {
       // Tell the UI up front whether this run uses mock or live LLM decisions.
       send("mode", { mockLlm });
 
+      // Every timeline event is kept here so the finished run can be
+      // persisted with its full execution log for history replay.
+      const events: TimelineEvent[] = [];
+      const recordEvent = (event: TimelineEvent) => {
+        events.push(event);
+        send("timeline", event);
+      };
+
       // Pessimistic default: only a run that returns normally flips it.
       let outcome: "success" | "failed" = "failed";
       try {
-        const result = await runAgent(topic, (event) => send("timeline", event), abort.signal, mockLlm, goal);
+        const result = await runAgent(topic, recordEvent, abort.signal, mockLlm, goal);
         outcome = result.outcome;
         send("result", result);
+        // Fire-and-forget: the stream must close on the run's schedule, not
+        // the database's. Cancelled runs land here too (outcome "failed") —
+        // runAgent returns normally after an abort. saveRun never throws,
+        // the catch is belt-and-braces against sync surprises.
+        void saveRun({ topic, goal, outcome, mockLlm, result, events }).catch((err) =>
+          console.warn("[db] failed to persist run:", err),
+        );
       } catch (err) {
         send("timeline", {
           id: `evt-fatal-${Date.now()}`,

@@ -12,6 +12,7 @@
  * lifecycle view lives in its own component under components/.
  */
 import { useRef, useState } from "react";
+import Link from "next/link";
 import type { RunGoal } from "@/lib/agent/schemas";
 import { useAgentRun } from "@/hooks/useAgentRun";
 import { TopicForm } from "@/components/TopicForm";
@@ -20,14 +21,21 @@ import { ExecutionSection } from "@/components/ExecutionSection";
 import { TimelineCollapsible } from "@/components/TimelineCollapsible";
 import { ResultPanels } from "@/components/ResultPanels";
 import { ExportRunButton } from "@/components/ExportRunButton";
-import { AlertIcon, ShieldIcon, PlayIcon, CheckIcon, GaugeIcon } from "@/components/icons";
+import {
+  AlertIcon,
+  ShieldIcon,
+  PlayIcon,
+  CheckIcon,
+  GaugeIcon,
+  HistoryIcon,
+} from "@/components/icons";
 
 /** Product promises, restated at the bottom of every page state. */
 const TRUST_BADGES = [
   { icon: PlayIcon, label: "On-demand runs" },
   { icon: CheckIcon, label: "Manual review only" },
   { icon: ShieldIcon, label: "Never posts for you" },
-  { icon: GaugeIcon, label: "Session-local, nothing stored" },
+  { icon: GaugeIcon, label: "Every run saved to History" },
 ] as const;
 
 function PageHeader({ mockLlm }: { mockLlm: boolean | null }) {
@@ -45,18 +53,28 @@ function PageHeader({ mockLlm }: { mockLlm: boolean | null }) {
         </div>
       </div>
 
-      {/* mockLlm is null until the server's `mode` SSE event arrives. */}
-      {mockLlm !== null && (
-        <span
-          className={`rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wide ${
-            mockLlm
-              ? "border-info/30 bg-info/10 text-info"
-              : "border-success/30 bg-success/10 text-success"
-          }`}
+      <div className="flex items-center gap-2">
+        {/* mockLlm is null until the server's `mode` SSE event arrives. */}
+        {mockLlm !== null && (
+          <span
+            className={`rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wide ${
+              mockLlm
+                ? "border-info/30 bg-info/10 text-info"
+                : "border-success/30 bg-success/10 text-success"
+            }`}
+          >
+            {mockLlm ? "mock mode" : "live · claude"}
+          </span>
+        )}
+        {/* Quiet secondary nav — must never compete with the Run agent CTA. */}
+        <Link
+          href="/history"
+          className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-line bg-surface/50 px-3 text-[12px] text-secondary transition-colors hover:bg-surface hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          {mockLlm ? "mock mode" : "live · claude"}
-        </span>
-      )}
+          <HistoryIcon size={13} />
+          History
+        </Link>
+      </div>
     </header>
   );
 }
