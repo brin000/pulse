@@ -15,11 +15,18 @@
  *     topics are processed oldest-last_run_at-first, so the remainder simply
  *     leads the queue on the next scheduled tick.
  *
- * Dedup: each topic's previously recommended post ids (seen_posts) are
- * injected as the run's exclusion set, filtered inside search_threads BEFORE
- * quality scoring — the cron can never recommend the same thread twice.
- * Hacker News ids carry an "hn-" prefix, so the set is collision-free
- * across platforms.
+ * Dedup, two mechanisms:
+ *  - Replies: each topic's previously recommended post ids (seen_posts) are
+ *    injected as the run's exclusion set, filtered inside search_threads
+ *    BEFORE quality scoring — the cron can never recommend the same thread
+ *    twice. Hacker News ids carry an "hn-" prefix, so the set is
+ *    collision-free across platforms.
+ *  - Standalone posts: a post suggestion has no upstream thread id to
+ *    exclude, so without a guard a post-goal topic would get a near-identical
+ *    suggestion every day. A synthetic seen_posts row records the last
+ *    suggestion per topic; within POST_SUGGESTION_COOLDOWN_MS, post-goal
+ *    topics are skipped before the run even starts (saving the budget), and
+ *    auto-goal runs that pivot to a standalone post stay silent.
  *
  * Notifications carry a quality gate: only a successful run that actually
  * produced something (drafts or a standalone post) creates an inbox row and
@@ -33,8 +40,10 @@ import {
   addSeenPost,
   countCronRunsSince,
   createNotification,
+  getLastPostSuggestionAt,
   getSeenPostIds,
   listEnabledTopicsOldestFirst,
+  markPostSuggestion,
   saveRun,
   touchTopicLastRun,
 } from "@/lib/db";
@@ -62,6 +71,13 @@ interface TopicSummary {
   emailed?: boolean;
   skipReason?: string;
 }
+
+/**
+ * How long a topic waits after a standalone post suggestion before the cron
+ * may deliver another one. Suggestions are generated from the topic alone
+ * (no fresh upstream thread), so consecutive ones are near-duplicates.
+ */
+const POST_SUGGESTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Midnight UTC today — the daily budget window boundary. */
 function startOfUtcDay(): number {
@@ -117,13 +133,33 @@ export async function GET(req: Request) {
       continue;
     }
 
+    const goal = sub.goal as RunGoal;
+
+    // Standalone post cooldown. For post-goal topics the run is skipped
+    // before it starts — its only possible deliverable is on cooldown, so
+    // running would burn budget on a notification we'd suppress anyway.
+    // Auto-goal topics still run (they may find a reply-worthy thread); the
+    // cooldown only mutes a repeated standalone-post pivot further down.
+    const lastSuggestionAt = await getLastPostSuggestionAt(sub.id);
+    const postCooldownActive =
+      lastSuggestionAt !== null &&
+      Date.now() - lastSuggestionAt < POST_SUGGESTION_COOLDOWN_MS;
+    if (goal === "post" && postCooldownActive) {
+      summaries.push({
+        topic: sub.topic,
+        goal: sub.goal,
+        status: "skipped",
+        skipReason: "post-suggestion cooldown (suggested within the last 7 days)",
+      });
+      continue;
+    }
+
     // Threads recommended by earlier cron runs are excluded before scoring.
     const excludePostIds = await getSeenPostIds(sub.id);
 
     // No SSE consumer here — events are collected and persisted with the run
     // so /history/[id] can replay the cron run exactly like a manual one.
     const events: TimelineEvent[] = [];
-    const goal = sub.goal as RunGoal;
 
     let result: RunResult;
     try {
@@ -167,6 +203,10 @@ export async function GET(req: Request) {
     if (result.selectedPost) {
       await addSeenPost(sub.id, result.selectedPost.id);
     }
+    // Start (or restart) the standalone-post cooldown for this topic.
+    if (result.standalonePost) {
+      await markPostSuggestion(sub.id);
+    }
     await touchTopicLastRun(sub.id);
 
     // Quality gate: notify only when the run actually produced something.
@@ -174,9 +214,14 @@ export async function GET(req: Request) {
       result.outcome === "success" &&
       (result.drafts.length > 0 || result.standalonePost !== null);
 
+    // Auto-goal run pivoted to a standalone post while one was already
+    // suggested recently: deliverable is a near-duplicate, stay silent.
+    const mutedByCooldown =
+      postCooldownActive && result.drafts.length === 0 && result.standalonePost !== null;
+
     let notified = false;
     let emailed = false;
-    if (produced && runId) {
+    if (produced && runId && !mutedByCooldown) {
       const content = notificationContent(sub.topic, result);
       notified =
         (await createNotification({
@@ -202,6 +247,9 @@ export async function GET(req: Request) {
       produced,
       notified,
       emailed,
+      ...(mutedByCooldown
+        ? { skipReason: "notification muted: post-suggestion cooldown" }
+        : {}),
     });
   }
 

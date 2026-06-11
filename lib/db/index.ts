@@ -210,6 +210,19 @@ function parseRow(row: RunRow): StoredRun {
 }
 
 /**
+ * Per-row parse guard: one corrupted JSON blob must only lose that row, not
+ * the whole history list (same swallow-and-degrade policy as the DB errors).
+ */
+function safeParseRow(row: RunRow): StoredRun | null {
+  try {
+    return parseRow(row);
+  } catch (err) {
+    console.warn(`[db] skipping run ${row.id}: corrupted stored JSON:`, err);
+    return null;
+  }
+}
+
+/**
  * Persist one finished run (including cancelled ones — their outcome is
  * already "failed"). Failures only warn: history is an optional feature,
  * the run the user just watched must never look broken because of it.
@@ -250,7 +263,7 @@ export async function listRuns(limit = 50): Promise<StoredRun[]> {
     const { db, ready } = getDb();
     await ready;
     const rows = await db.select().from(runs).orderBy(desc(runs.createdAt)).limit(limit);
-    return rows.map(parseRow);
+    return rows.map(safeParseRow).filter((run): run is StoredRun => run !== null);
   } catch (err) {
     console.warn("[db] failed to list runs:", err);
     return [];
@@ -263,7 +276,7 @@ export async function getRun(id: string): Promise<StoredRun | null> {
     const { db, ready } = getDb();
     await ready;
     const rows = await db.select().from(runs).where(eq(runs.id, id)).limit(1);
-    return rows[0] ? parseRow(rows[0]) : null;
+    return rows[0] ? safeParseRow(rows[0]) : null;
   } catch (err) {
     console.warn("[db] failed to load run:", err);
     return null;
@@ -404,6 +417,14 @@ export async function touchTopicLastRun(id: string): Promise<void> {
 /* Seen posts (cron dedup memory)                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Synthetic seen_posts post_id marking "this topic already got a standalone
+ * post suggestion" — drives the cron's post-suggestion cooldown. The table is
+ * already keyed per topic, so a constant marker is enough; real post ids
+ * (Reddit base36, "hn-" prefixed) can never collide with it.
+ */
+const POST_SUGGESTION_KEY = "post-suggestion";
+
 /** Post ids this topic's cron runs already recommended — the exclusion set. */
 export async function getSeenPostIds(topicId: string): Promise<string[]> {
   try {
@@ -413,7 +434,9 @@ export async function getSeenPostIds(topicId: string): Promise<string[]> {
       .select({ postId: seenPosts.postId })
       .from(seenPosts)
       .where(eq(seenPosts.topicId, topicId));
-    return rows.map((r) => r.postId);
+    // The synthetic cooldown marker is not a real post id — keep it out of
+    // the agent's exclusion set.
+    return rows.map((r) => r.postId).filter((id) => id !== POST_SUGGESTION_KEY);
   } catch (err) {
     console.warn("[db] failed to load seen posts:", err);
     return [];
@@ -431,6 +454,48 @@ export async function addSeenPost(topicId: string, postId: string): Promise<void
       .onConflictDoNothing();
   } catch (err) {
     console.warn("[db] failed to record seen post:", err);
+  }
+}
+
+/**
+ * When this topic last received a standalone post suggestion (epoch ms), or
+ * null when it never did / the DB is unavailable (null = no cooldown, which
+ * keeps the "persistence never blocks a run" policy).
+ */
+export async function getLastPostSuggestionAt(topicId: string): Promise<number | null> {
+  try {
+    const { db, ready } = getDb();
+    await ready;
+    const rows = await db
+      .select({ seenAt: seenPosts.seenAt })
+      .from(seenPosts)
+      .where(and(eq(seenPosts.topicId, topicId), eq(seenPosts.postId, POST_SUGGESTION_KEY)))
+      .limit(1);
+    return rows[0]?.seenAt ?? null;
+  } catch (err) {
+    console.warn("[db] failed to load post-suggestion cooldown:", err);
+    return null;
+  }
+}
+
+/**
+ * Record that this topic just got a standalone post suggestion. Upsert (not
+ * onConflictDoNothing) on purpose: the cooldown window must restart from the
+ * latest suggestion, so seen_at is refreshed on every hit.
+ */
+export async function markPostSuggestion(topicId: string): Promise<void> {
+  try {
+    const { db, ready } = getDb();
+    await ready;
+    await db
+      .insert(seenPosts)
+      .values({ topicId, postId: POST_SUGGESTION_KEY, seenAt: Date.now() })
+      .onConflictDoUpdate({
+        target: [seenPosts.topicId, seenPosts.postId],
+        set: { seenAt: Date.now() },
+      });
+  } catch (err) {
+    console.warn("[db] failed to record post suggestion:", err);
   }
 }
 
