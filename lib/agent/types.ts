@@ -19,8 +19,8 @@ import type {
  *
  * This object is what gets "compressed": tool results are reduced to summaries
  * before being stored, and `compressAndUpdateContext` trims lists so each
- * subsequent LLM call stays small. It lives only for the request — runs are
- * session-local by design (no persistence in the MVP).
+ * subsequent LLM call stays small. The context object lives only for the
+ * request; the finished run (result + events) is persisted to the DB.
  */
 export interface AgentContext {
   topic: string;

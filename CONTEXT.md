@@ -1,6 +1,6 @@
 # Pulse
 
-Pulse helps developers show up in the right Reddit conversations, at the right time, with something worth saying. The context centers on building developer presence through reviewable drafts, not on automatically posting content.
+Pulse helps developers show up in the right developer conversations — on Reddit and Hacker News — at the right time, with something worth saying. The context centers on building developer presence through reviewable drafts, not on automatically posting content.
 
 ## Language
 
@@ -17,23 +17,23 @@ The reputation and familiarity an indie developer builds by repeatedly contribut
 _Avoid_: Personal brand, audience growth
 
 **Discussion Window**:
-The short period when a Reddit thread is active enough that a thoughtful reply can still be noticed and useful.
+The short period when a community thread (Reddit or Hacker News) is active enough that a thoughtful reply can still be noticed and useful.
 _Avoid_: Posting time, trend window
 
 **Right Time**:
-In the MVP, the right time means the on-demand agent finds a thread that is still active enough to join when the user runs Pulse. It does not mean scheduled monitoring or notifications.
+The right time means finding a thread that is still active enough to join — either during an on-demand run, or through a scheduled topic subscription that notifies the user when something new turns up.
 _Avoid_: Automatic alert, best posting time
 
 **Conversation Worth Joining**:
-A Reddit discussion that is relevant to the indie developer's topic, currently active, and has a missing angle the developer can credibly add.
+A community discussion (Reddit or Hacker News) that is relevant to the indie developer's topic, currently active, and has a missing angle the developer can credibly add.
 _Avoid_: Viral post, content opportunity
 
 **Read the Room**:
-Understanding a Reddit thread's tone, norms, and current discussion shape before deciding what kind of contribution would be welcome.
+Understanding a thread's tone, norms, and current discussion shape before deciding what kind of contribution would be welcome.
 _Avoid_: Sentiment analysis, tone detection
 
 **Reviewable Draft**:
-A suggested Reddit reply or post that the user reviews and copies manually; Pulse does not publish it automatically.
+A suggested reply or post that the user reviews and copies manually; Pulse does not publish it automatically.
 _Avoid_: Auto-post, generated content
 
 **First Real Test Case**:
@@ -41,7 +41,7 @@ Pulse's initial real-world use: finding conversations about AI agent development
 _Avoid_: Demo scenario, fake case study
 
 **Worth Posting**:
-A reviewable draft is worth posting when the indie developer would be willing to manually edit and publish it in the target Reddit thread.
+A reviewable draft is worth posting when the indie developer would be willing to manually edit and publish it in the target thread or community.
 _Avoid_: High-upvote prediction, engagement guarantee
 
 **Stealth Marketing**:
@@ -49,16 +49,16 @@ Content that disguises product promotion as a helpful Reddit reply. Pulse should
 _Avoid_: Subtle promotion, product plug
 
 **On-Demand Agent**:
-The MVP interaction model: the indie developer enters a topic, then Pulse scans Reddit and drafts reviewable replies for that session.
-_Avoid_: Scheduled monitor, background notification agent
+The primary interaction model: the indie developer enters a topic, then Pulse picks the fitting platform (Reddit or Hacker News), scans it, and drafts reviewable content. Topic subscriptions additionally re-run the same agent on a schedule with dedup and notifications.
+_Avoid_: Background auto-poster
 
-**Session-Local Run**:
-A Pulse run that exists only in the current browser session; the user can review and copy drafts, but Pulse does not persist run history in the MVP.
-_Avoid_: Saved history, persistent memory
+**Persisted Run**:
+Every finished run (result and execution timeline) is saved to the database and replayable from the history page; only the live streaming state is session-local.
+_Avoid_: Throwaway session, ephemeral output
 
 **Comment Reply**:
-The only draft type in the MVP: a reply to an existing Reddit thread that responds to the current discussion and fills a missing angle.
-_Avoid_: Standalone post, generic content draft
+The primary draft type: a reply to an existing thread that responds to the current discussion and fills a missing angle. Pulse can also draft a standalone post when asked, or pivot to one when no thread is worth joining.
+_Avoid_: Generic content draft
 
 **Agent Cockpit**:
 The MVP interface style: a clear developer-tool view of the agent's execution timeline, selected thread, content gap, and reviewable drafts.

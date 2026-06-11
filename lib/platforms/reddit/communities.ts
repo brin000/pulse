@@ -26,11 +26,6 @@ export const SUBREDDIT_WHITELIST = [
 export type Subreddit = (typeof SUBREDDIT_WHITELIST)[number];
 
 /**
- * Local tone/rule hints per subreddit (MVP stand-in for live rule fetching).
- * The whitelist is small, so a maintained local summary is more reliable than
- * scraping subreddit rules at runtime. Exposed via redditAdapter.communityNorms.
- */
-/**
  * Display form of a subreddit, e.g. "webdev" -> "r/webdev".
  * Pure function so client components can render community names without
  * importing the (server-side) adapter.
@@ -39,6 +34,11 @@ export function formatRedditCommunity(community: string): string {
   return `r/${community}`;
 }
 
+/**
+ * Local tone/rule hints per subreddit (MVP stand-in for live rule fetching).
+ * The whitelist is small, so a maintained local summary is more reliable than
+ * scraping subreddit rules at runtime. Exposed via redditAdapter.communityNorms.
+ */
 export const SUBREDDIT_RULE_HINTS: Record<Subreddit, string[]> = {
   webdev: [
     "Avoid low-effort self-promotion.",

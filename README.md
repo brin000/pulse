@@ -21,10 +21,12 @@ data — no API key required. To run with live Claude decisions:
 cp .env.example .env.local   # then set ANTHROPIC_API_KEY
 ```
 
-Reddit data comes from the public API (no auth) and Hacker News data from the
-public Algolia API; if either is unreachable, Pulse falls back to mock data
-and labels it as such in the UI (`PULSE_MOCK_REDDIT=1` / `PULSE_MOCK_HN=1`
-pin the fallback for deterministic demos).
+Reddit data is fetched via OAuth (script-app credentials, see `.env.example`);
+without credentials Pulse degrades to the anonymous public endpoint and
+ultimately to mock data. Hacker News data comes from the public Algolia API
+(no credentials needed). If either platform is unreachable, Pulse falls back
+to mock data and labels it as such in the UI (`PULSE_MOCK_REDDIT=1` /
+`PULSE_MOCK_HN=1` pin the fallback for deterministic demos).
 
 ## Why I Am Building This
 
@@ -34,27 +36,22 @@ So I am building Pulse to solve my own problem.
 
 The first version keeps publishing manual by design: Pulse finds the opportunity, reads the room, drafts options, and I decide what to post.
 
-## MVP Scope
+## Current Scope
 
-Pulse is intentionally narrow for the first version:
+What Pulse does today (matching the Roadmap below):
 
-- On-demand: I enter a topic and run the agent manually.
-- Comment replies only: Pulse drafts replies to existing Reddit threads.
-- Right time means active threads found during an on-demand run, not background monitoring.
+- On-demand runs: enter a topic and watch the agent work on a live timeline.
+- Comment reply drafts for existing Reddit and Hacker News threads, plus standalone post generation (explicit goal or auto-pivot when no thread is worth joining).
+- Multi-platform: the agent decides per run whether Reddit or Hacker News fits the topic.
+- Scheduled monitoring: topic subscriptions re-run daily via cron, with dedup, budget guardrails, in-app notifications and optional email.
+- Persistent run history: every run is saved to a libsql database and replayable from /history.
 - Manual review: Pulse never posts automatically.
-- Session-local runs: Pulse does not store run history in the MVP.
 - Agent cockpit UI: the interface shows what the agent is doing, not just the final answer.
 
-Out of scope for the MVP:
+Still out of scope:
 
-- Scheduled monitoring
-- Notifications
-- Standalone post generation
-- Reddit OAuth
-- Auto-posting
-- Persistent run history
-- Database-backed memory
-- Multi-platform support
+- Auto-posting (deliberate: publishing stays manual)
+- Platforms beyond Reddit and Hacker News
 
 ## First Real Test Case
 

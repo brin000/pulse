@@ -63,7 +63,7 @@ function PageHeader({
         <div>
           <h1 className="text-xl font-bold tracking-tight text-primary">Pulse</h1>
           <p className="text-[12px] text-secondary">
-            The right Reddit conversations, at the right time, with something worth saying.
+            The right developer conversations, at the right time, with something worth saying.
           </p>
         </div>
       </div>

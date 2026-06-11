@@ -7,8 +7,8 @@
  * the fetch ReadableStream (EventSource can't POST, so we parse by hand —
  * which also means we understand every byte of our streaming layer).
  *
- * Runs are session-local by design: state lives in this hook and is gone on
- * refresh. The MVP intentionally has no persistence.
+ * Live run state lives in this hook and resets on refresh; the finished run
+ * itself is persisted server-side (lib/db) and replayable from /history.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunGoal } from "@/lib/agent/schemas";

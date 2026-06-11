@@ -1,6 +1,6 @@
 /**
- * Serialize a finished run as Markdown for the dogfooding archive
- * (docs/dogfooding/ case files: run summary → posted version → outcome).
+ * Serialize a finished run as Markdown (run summary → drafts) so the user
+ * can archive or share it outside the app.
  */
 import type { RunResult } from "@/lib/agent/types";
 import { formatCommunity } from "@/lib/platforms/format";
