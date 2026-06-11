@@ -30,10 +30,11 @@ export function TimelineCollapsible({
 
   // `status` reflects the server's structured outcome (done event), so it is
   // the single source of truth for success vs failure here.
+  // A standalone post counts as a deliverable just like reply drafts.
   const summaryLabel =
     status === "error"
       ? "Run ended with errors"
-      : result && result.drafts.length > 0
+      : result && (result.drafts.length > 0 || result.standalonePost)
         ? "Run finished"
         : "Run finished without a draft";
 
@@ -46,7 +47,8 @@ export function TimelineCollapsible({
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-surface/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
       >
         <span className="text-[13px] font-medium text-primary">{summaryLabel}</span>
-        <span className="font-mono text-[11px] tabular-nums text-muted">
+        {/* 11px meta uses secondary: muted fails AA at this size */}
+        <span className="font-mono text-[11px] tabular-nums text-secondary">
           {decisionCount} decision{decisionCount === 1 ? "" : "s"}
         </span>
         <span className="ml-auto flex items-center gap-1 text-[12px] text-secondary">

@@ -17,7 +17,8 @@ const STEPS = [
 ] as const;
 
 type StepId = (typeof STEPS)[number]["id"];
-type StepState = "pending" | "active" | "complete";
+/** "skipped" marks reply-only stages a standalone-post run never visits. */
+type StepState = "pending" | "active" | "complete" | "skipped";
 
 /**
  * A tool has at least started. Used for the Scan step: once a downstream tool
@@ -46,10 +47,21 @@ function deriveStepStates(
   events: TimelineEvent[],
   result: RunResult | null,
 ): Record<StepId, StepState> {
+  // Standalone-post path (goal=post, or an auto run that pivoted): in the
+  // reply pipeline check_subreddit_rules only ever runs AFTER comments were
+  // read, so rules-without-comments unambiguously signals the post path.
+  const pivot =
+    (toolStarted(events, "check_subreddit_rules") &&
+      !toolCompleted(events, "get_post_comments")) ||
+    toolStarted(events, "draft_standalone_post") ||
+    result?.standalonePost != null;
+
   const scanComplete =
     toolStarted(events, "evaluate_result_quality") ||
     toolStarted(events, "get_post_comments") ||
-    result?.selectedPost != null;
+    result?.selectedPost != null ||
+    // Once the post path begins (rules check), searching is necessarily over.
+    pivot;
   // Reading a post's comments is how the orchestrator commits to a thread,
   // so a completed get_post_comments means the Select step is done.
   const selectComplete =
@@ -58,36 +70,43 @@ function deriveStepStates(
     toolCompleted(events, "evaluate_content_gap") || result?.gap != null;
   const draftComplete =
     toolCompleted(events, "draft_comment_reply") ||
-    (result?.drafts.length ?? 0) > 0;
+    toolCompleted(events, "draft_standalone_post") ||
+    (result?.drafts.length ?? 0) > 0 ||
+    result?.standalonePost != null;
 
   if (status === "idle") {
     return { scan: "pending", select: "pending", gap: "pending", draft: "pending" };
   }
+
+  // Select/Gap never happen on the post path — mark them skipped instead of
+  // leaving the stepper stuck on a stage that will never complete.
+  const selectState: StepState | null = pivot && !selectComplete ? "skipped" : null;
+  const gapState: StepState | null = pivot && !gapComplete ? "skipped" : null;
 
   const terminal = status === "finished" || status === "error";
 
   if (terminal) {
     return {
       scan: scanComplete ? "complete" : "pending",
-      select: selectComplete ? "complete" : "pending",
-      gap: gapComplete ? "complete" : "pending",
+      select: selectState ?? (selectComplete ? "complete" : "pending"),
+      gap: gapState ?? (gapComplete ? "complete" : "pending"),
       draft: draftComplete ? "complete" : "pending",
     };
   }
 
-  // While running, the active step is the first incomplete one in pipeline order.
+  // While running, the active step is the first incomplete, non-skipped one.
   const active: StepId = !scanComplete
     ? "scan"
-    : !selectComplete
+    : !selectComplete && !selectState
       ? "select"
-      : !gapComplete
+      : !gapComplete && !gapState
         ? "gap"
         : "draft";
 
   return {
     scan: scanComplete ? "complete" : active === "scan" ? "active" : "pending",
-    select: selectComplete ? "complete" : active === "select" ? "active" : "pending",
-    gap: gapComplete ? "complete" : active === "gap" ? "active" : "pending",
+    select: selectState ?? (selectComplete ? "complete" : active === "select" ? "active" : "pending"),
+    gap: gapState ?? (gapComplete ? "complete" : active === "gap" ? "active" : "pending"),
     draft: draftComplete ? "complete" : active === "draft" ? "active" : "pending",
   };
 }
@@ -98,6 +117,9 @@ function stepClasses(state: StepState): string {
       return "border-success/30 bg-success/10 text-success";
     case "active":
       return "border-accent/40 bg-accent/15 text-accent";
+    case "skipped":
+      // Visually receded but labeled — never conveyed by style alone.
+      return "border-line border-dashed bg-transparent text-secondary";
     default:
       return "border-line bg-raised text-muted";
   }
@@ -115,6 +137,8 @@ export function RunStepper({
   const states = deriveStepStates(status, events, result);
 
   const completedCount = STEPS.filter((s) => states[s.id] === "complete").length;
+  // Skipped stages leave the pipeline, so they leave the denominator too.
+  const totalCount = STEPS.filter((s) => states[s.id] !== "skipped").length;
 
   return (
     <div className="mb-4">
@@ -134,6 +158,11 @@ export function RunStepper({
                   <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-current motion-reduce:animate-none" />
                 )}
                 {step.label}
+                {state === "skipped" && (
+                  <span className="font-mono text-[10px] uppercase tracking-wide">
+                    skipped
+                  </span>
+                )}
               </span>
               {i < STEPS.length - 1 && (
                 <span
@@ -148,8 +177,8 @@ export function RunStepper({
         })}
       </ol>
       {status !== "idle" && (
-        <p className="mt-2 font-mono text-[11px] tabular-nums text-muted">
-          {completedCount}/{STEPS.length} stages complete
+        <p className="mt-2 font-mono text-[11px] tabular-nums text-secondary">
+          {completedCount}/{totalCount} stages complete
         </p>
       )}
     </div>

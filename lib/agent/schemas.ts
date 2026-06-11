@@ -15,6 +15,14 @@ import { SUBREDDIT_WHITELIST } from "@/lib/config";
 
 export const subredditSchema = z.enum(SUBREDDIT_WHITELIST);
 
+/**
+ * What the user asked the run to produce. "auto" tries the reply pipeline
+ * first and pivots to a standalone post when no joinable thread exists —
+ * turning the old "search exhausted → fail" dead end into a useful output.
+ */
+export const runGoalSchema = z.enum(["auto", "reply", "post"]);
+export type RunGoal = z.infer<typeof runGoalSchema>;
+
 /** Compressed Reddit post — the only post shape the LLM ever sees. */
 export const postSummarySchema = z.object({
   id: z.string(),
@@ -50,6 +58,7 @@ export const TOOL_NAMES = [
   "evaluate_content_gap",
   "check_subreddit_rules",
   "draft_comment_reply",
+  "draft_standalone_post",
 ] as const;
 
 export const toolNameSchema = z.enum(TOOL_NAMES);
@@ -81,6 +90,12 @@ export const toolInputSchemas = {
     /** Free-form drafting instruction, e.g. the recommended angle to take. */
     angle: z.string().min(1),
   }),
+  draft_standalone_post: z.object({
+    /** Target community for the original post — whitelist-constrained. */
+    subreddit: subredditSchema,
+    /** Free-form drafting instruction, e.g. the angle the post should take. */
+    angle: z.string().min(1),
+  }),
 } as const;
 
 export const qualityEvaluationSchema = z.object({
@@ -107,17 +122,29 @@ export const subredditRulesSchema = z.object({
 });
 export type SubredditRules = z.infer<typeof subredditRulesSchema>;
 
+/** Self-check the drafter runs on its own output (shown in the UI as chips). */
+export const selfCheckSchema = z.object({
+  toneMatch: z.boolean(),
+  useful: z.boolean(),
+  spamRisk: z.enum(["low", "medium", "high"]),
+});
+export type SelfCheck = z.infer<typeof selfCheckSchema>;
+
 export const draftSchema = z.object({
   tone: z.enum(["practical", "experience-based", "curious"]),
   text: z.string().min(1),
-  /** Self-check the drafter runs on its own output (shown in the UI as chips). */
-  selfCheck: z.object({
-    toneMatch: z.boolean(),
-    useful: z.boolean(),
-    spamRisk: z.enum(["low", "medium", "high"]),
-  }),
+  selfCheck: selfCheckSchema,
 });
 export type Draft = z.infer<typeof draftSchema>;
+
+/** An original post (title + body) drafted for a target subreddit. */
+export const standalonePostSchema = z.object({
+  title: z.string().min(1).max(300),
+  body: z.string().min(1),
+  tone: z.enum(["practical", "experience-based", "curious"]),
+  selfCheck: selfCheckSchema,
+});
+export type StandalonePost = z.infer<typeof standalonePostSchema>;
 
 export const toolOutputSchemas = {
   search_reddit: z.object({
@@ -134,6 +161,9 @@ export const toolOutputSchemas = {
   check_subreddit_rules: subredditRulesSchema,
   draft_comment_reply: z.object({
     drafts: z.array(draftSchema).min(1).max(3),
+  }),
+  draft_standalone_post: z.object({
+    post: standalonePostSchema,
   }),
 } as const;
 

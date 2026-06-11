@@ -21,6 +21,7 @@ import {
   toolInputSchemas,
   toolOutputSchemas,
   type AgentDecision,
+  type RunGoal,
   type ToolName,
 } from "@/lib/agent/schemas";
 import { toolExecutors } from "@/lib/agent/tools";
@@ -47,9 +48,10 @@ function makeEvent(opts: {
   };
 }
 
-function freshContext(topic: string, mockLlm: boolean): AgentContext {
+function freshContext(topic: string, mockLlm: boolean, goal: RunGoal): AgentContext {
   return {
     topic,
+    goal,
     mockLlm,
     steps: 0,
     searchAttempts: 0,
@@ -61,6 +63,7 @@ function freshContext(topic: string, mockLlm: boolean): AgentContext {
     gap: null,
     rules: null,
     drafts: [],
+    standalonePost: null,
     dataSource: null,
     failures: [],
   };
@@ -114,6 +117,13 @@ function compressAndUpdateContext(
       next.drafts = out.drafts;
       break;
     }
+    case "draft_standalone_post": {
+      const out = toolOutputSchemas.draft_standalone_post.parse(output);
+      // Shares the drafting budget with replies — one cap for all drafting.
+      next.draftAttempts += 1;
+      next.standalonePost = out.post;
+      break;
+    }
   }
   return next;
 }
@@ -152,6 +162,10 @@ function describeResult(tool: ToolName, output: unknown): string {
       const out = toolOutputSchemas.draft_comment_reply.parse(output);
       return `${out.drafts.length} drafts generated`;
     }
+    case "draft_standalone_post": {
+      const out = toolOutputSchemas.draft_standalone_post.parse(output);
+      return `standalone post drafted: "${out.post.title.slice(0, 60)}"`;
+    }
   }
 }
 
@@ -165,8 +179,13 @@ function attemptLimitViolation(ctx: AgentContext, toolName: ToolName): string | 
   if (toolName === "search_reddit" && ctx.searchAttempts >= AGENT_LIMITS.maxSearchAttempts) {
     return `search_reddit rejected: attempt limit reached (${ctx.searchAttempts}/${AGENT_LIMITS.maxSearchAttempts}). Work with the posts already in context or finish.`;
   }
-  if (toolName === "draft_comment_reply" && ctx.draftAttempts >= AGENT_LIMITS.maxDraftAttempts) {
-    return `draft_comment_reply rejected: attempt limit reached (${ctx.draftAttempts}/${AGENT_LIMITS.maxDraftAttempts}). Finish with the existing drafts or fail.`;
+  // Replies and standalone posts share one drafting budget: both are LLM
+  // drafting calls, and a model bouncing between them must still be bounded.
+  if (
+    (toolName === "draft_comment_reply" || toolName === "draft_standalone_post") &&
+    ctx.draftAttempts >= AGENT_LIMITS.maxDraftAttempts
+  ) {
+    return `${toolName} rejected: drafting attempt limit reached (${ctx.draftAttempts}/${AGENT_LIMITS.maxDraftAttempts}). Finish with the existing output or fail.`;
   }
   return null;
 }
@@ -176,14 +195,17 @@ function attemptLimitViolation(ctx: AgentContext, toolName: ToolName): string | 
  * way. Returns the final RunResult (also emitted by the API route as SSE).
  * `signal` aborts the loop between steps (e.g. the client disconnected).
  * `mockLlm` pins the decision mode for the whole run (route-level policy).
+ * `goal` selects the pipeline (reply / post / auto-pivot); defaults to auto
+ * so older clients that send no goal keep working.
  */
 export async function runAgent(
   topic: string,
   emit: EmitFn,
   signal?: AbortSignal,
   mockLlm: boolean = false,
+  goal: RunGoal = "auto",
 ): Promise<RunResult> {
-  let ctx = freshContext(topic, mockLlm);
+  let ctx = freshContext(topic, mockLlm, goal);
   // Flipped on any abnormal termination (fail action, decision error,
   // cancellation, step cap) — becomes the structured RunResult.outcome.
   let failed = false;
@@ -296,6 +318,7 @@ export async function runAgent(
     gap: ctx.gap,
     rules: ctx.rules,
     drafts: ctx.drafts,
+    standalonePost: ctx.standalonePost,
     dataSource: ctx.dataSource,
     steps: ctx.steps,
   };

@@ -74,6 +74,17 @@ export function PenIcon(props: IconProps) {
   );
 }
 
+export function FileTextIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
+      <path d="M14 2v5h6" />
+      <path d="M9 13h6" />
+      <path d="M9 17h6" />
+    </svg>
+  );
+}
+
 export function CheckIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

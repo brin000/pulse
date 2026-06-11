@@ -16,6 +16,7 @@ import {
   AlertIcon,
   BrainIcon,
   CheckIcon,
+  FileTextIcon,
   GaugeIcon,
   LightbulbIcon,
   MessagesIcon,
@@ -33,6 +34,7 @@ const TOOL_ICONS: Record<ToolName, ReactNode> = {
   evaluate_content_gap: <LightbulbIcon size={14} />,
   check_subreddit_rules: <ShieldIcon size={14} />,
   draft_comment_reply: <PenIcon size={14} />,
+  draft_standalone_post: <FileTextIcon size={14} />,
 };
 
 function eventIcon(event: TimelineEvent) {

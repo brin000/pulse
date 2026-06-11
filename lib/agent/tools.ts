@@ -14,9 +14,11 @@ import { AGENT_LIMITS, SUBREDDIT_RULE_HINTS } from "@/lib/config";
 import {
   contentGapSchema,
   draftSchema,
+  standalonePostSchema,
   type ContentGap,
   type Draft,
   type PostSummary,
+  type StandalonePost,
   type ToolInput,
   type ToolName,
   type ToolOutput,
@@ -207,6 +209,62 @@ const execDraftReply: ToolExecutor<"draft_comment_reply"> = async (input, ctx) =
 };
 
 /* ------------------------------------------------------------------ */
+/* 7. draft_standalone_post (LLM-backed; deterministic in mock mode)    */
+/* ------------------------------------------------------------------ */
+
+const execDraftStandalonePost: ToolExecutor<"draft_standalone_post"> = async (
+  input,
+  ctx,
+) => {
+  // Norms only apply when they were fetched for the same target community.
+  const hints =
+    ctx.rules?.subreddit === input.subreddit
+      ? ctx.rules.hints
+      : SUBREDDIT_RULE_HINTS[input.subreddit];
+
+  if (ctx.mockLlm) {
+    // Deterministic post mirroring what the live drafter produces: a lessons-
+    // learned write-up anchored on the user's topic, no self-promotion.
+    const post: StandalonePost = {
+      title: `What I learned trying to stay on top of "${ctx.topic.slice(0, 120)}" without losing my build time`,
+      body: [
+        `I care about ${ctx.topic}, but keeping up with the discussions around it was eating my mornings. So I treated it like an engineering problem and want to share what actually worked.`,
+        ``,
+        `1. Scope beats volume. Watching a handful of communities deeply beats skimming all of Reddit. Fewer sources, better signal.`,
+        `2. Decide what "worth engaging" means up front. For me: the thread is younger than ~48h and still getting comments. Everything else is archaeology.`,
+        `3. Write from experience or don't write. The comments that landed were the ones where I shared a concrete trade-off I had hit myself — never the summary-style ones.`,
+        ``,
+        `Curious how others here balance staying present in their communities with actually shipping. What's your filter for which discussions deserve your time?`,
+      ].join("\n"),
+      tone: "experience-based",
+      selfCheck: { toneMatch: true, useful: true, spamRisk: "low" },
+    };
+    return { post };
+  }
+
+  // Real mode: same drafting policy as replies — an original post is still
+  // judged by the community's no-stealth-marketing bar.
+  const result = await generateStructured({
+    schema: z.object({ post: standalonePostSchema }),
+    system: DRAFTING_POLICY,
+    prompt: [
+      `Write ONE original Reddit post (title + body) for r/${input.subreddit}.`,
+      `Subreddit norms: ${hints.join(" ")}`,
+      `Topic the user cares about: ${ctx.topic}`,
+      ctx.posts.length > 0
+        ? `Recent discussions in these communities (context, do not copy):\n${ctx.posts
+            .map((p) => `- r/${p.subreddit}: ${p.title}`)
+            .join("\n")}`
+        : `No recent threads cover this topic — the post should open that conversation.`,
+      ``,
+      `Angle to take: ${input.angle}`,
+      `The post must read like a real community member sharing experience, invite discussion (end with a genuine question), and pass your own self-check for tone match, usefulness, and spam risk.`,
+    ].join("\n"),
+  });
+  return result;
+};
+
+/* ------------------------------------------------------------------ */
 /* Registry                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -217,4 +275,5 @@ export const toolExecutors: { [K in ToolName]: ToolExecutor<K> } = {
   evaluate_content_gap: execEvaluateGap,
   check_subreddit_rules: execCheckRules,
   draft_comment_reply: execDraftReply,
+  draft_standalone_post: execDraftStandalonePost,
 };

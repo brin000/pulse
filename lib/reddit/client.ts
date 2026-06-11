@@ -153,11 +153,11 @@ export async function getPostComments(postId: string): Promise<CommentsResult> {
 function filterMockPosts(keywords: string[], subreddits: Subreddit[]): PostSummary[] {
   const words = keywords.map((k) => k.toLowerCase());
   const inScope = MOCK_POSTS.filter((p) => subreddits.includes(p.subreddit));
-  const matched = inScope.filter((p) => {
+  // No match stays empty on purpose: an honest "nothing found" is what lets
+  // the auto goal pivot to a standalone post (and reply-only fail truthfully)
+  // instead of replying to threads unrelated to the topic.
+  return inScope.filter((p) => {
     const haystack = `${p.title} ${p.snippet}`.toLowerCase();
     return words.some((w) => haystack.includes(w));
   });
-  // If keywords are too narrow for the small mock corpus, return everything in
-  // scope — the agent's quality evaluation still decides what is acceptable.
-  return matched.length > 0 ? matched : inScope;
 }

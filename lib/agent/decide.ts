@@ -9,7 +9,7 @@
  * with honest `reason`s, so the full loop (validation, SSE, UI) is exercised
  * without an API key.
  */
-import { AGENT_LIMITS, SUBREDDIT_WHITELIST } from "@/lib/config";
+import { AGENT_LIMITS, SUBREDDIT_WHITELIST, type Subreddit } from "@/lib/config";
 import {
   agentDecisionSchema,
   TOOL_NAMES,
@@ -33,6 +33,7 @@ export async function decideNextAction(ctx: AgentContext): Promise<AgentDecision
 function summarizeContext(ctx: AgentContext): string {
   const lines = [
     `topic: ${ctx.topic}`,
+    `goal: ${ctx.goal}`,
     `step: ${ctx.steps}/${AGENT_LIMITS.maxSteps}`,
     `search_attempts: ${ctx.searchAttempts}/${AGENT_LIMITS.maxSearchAttempts}`,
     `draft_attempts: ${ctx.draftAttempts}/${AGENT_LIMITS.maxDraftAttempts}`,
@@ -59,6 +60,7 @@ function summarizeContext(ctx: AgentContext): string {
   if (ctx.gap) lines.push(`content_gap: ${ctx.gap.recommendedAngle}`);
   if (ctx.rules) lines.push(`rules_checked: r/${ctx.rules.subreddit}`);
   if (ctx.drafts.length > 0) lines.push(`drafts_ready: ${ctx.drafts.length}`);
+  if (ctx.standalonePost) lines.push(`standalone_post_ready: "${ctx.standalonePost.title.slice(0, 60)}"`);
   if (ctx.failures.length > 0) {
     lines.push("recent_failures:", ...ctx.failures.slice(-3).map((f) => `  - ${f}`));
   }
@@ -69,16 +71,19 @@ async function decideWithModel(ctx: AgentContext): Promise<AgentDecision> {
   return generateStructured({
     schema: agentDecisionSchema,
     system: [
-      "You are the decision core of Pulse, an agent that finds a live Reddit discussion worth joining and drafts comment replies.",
+      "You are the decision core of Pulse, an agent that either joins a live Reddit discussion with drafted replies or drafts an original standalone post for a target subreddit.",
       `Available tools: ${TOOL_NAMES.join(", ")}.`,
       // The decision schema can't describe per-tool inputs, so spell them out.
-      "Tool inputs: search_reddit {keywords: string[], subreddits: string[]} · evaluate_result_quality {} (scores posts already in context) · get_post_comments {postId} · evaluate_content_gap {postId} · check_subreddit_rules {subreddit} · draft_comment_reply {postId, angle}.",
+      "Tool inputs: search_reddit {keywords: string[], subreddits: string[]} · evaluate_result_quality {} (scores posts already in context) · get_post_comments {postId} · evaluate_content_gap {postId} · check_subreddit_rules {subreddit} · draft_comment_reply {postId, angle} · draft_standalone_post {subreddit, angle}.",
       `Allowed subreddits: ${SUBREDDIT_WHITELIST.join(", ")}.`,
-      "Typical flow: search_reddit -> evaluate_result_quality -> (retry search with refined keywords if low quality) -> get_post_comments on the best post -> evaluate_content_gap -> check_subreddit_rules -> draft_comment_reply -> finish.",
+      "The run state includes `goal`, which selects the flow:",
+      "- goal=reply: search_reddit -> evaluate_result_quality -> (retry search with refined keywords if low quality) -> get_post_comments on the best post -> evaluate_content_gap -> check_subreddit_rules -> draft_comment_reply -> finish.",
+      "- goal=post: optionally search_reddit once for context, then pick the best-fitting allowed subreddit -> check_subreddit_rules -> draft_standalone_post -> finish. Skip post selection, comments and gap analysis.",
+      "- goal=auto: follow the reply flow first; if search retries are exhausted or no acceptable thread exists, pivot to the post flow (check_subreddit_rules -> draft_standalone_post) instead of failing.",
       "Rules:",
       "- Always include a concrete, specific `reason` — it is shown to the user live.",
       "- Retry search at most until the attempt limit; refine keywords when you do.",
-      "- finish only when drafts exist; fail only when nothing useful can be produced.",
+      "- finish only when drafts or a standalone post exist; fail only when nothing useful can be produced.",
       "- input must match the chosen tool's parameters exactly.",
     ].join("\n"),
     prompt: `Current run state:\n${summarizeContext(ctx)}\n\nReturn the single next AgentDecision.`,
@@ -102,7 +107,88 @@ function keywordsFor(ctx: AgentContext): string[] {
   return broadened.length > 0 ? broadened : ["ai", "agent"];
 }
 
+/**
+ * Deterministic target-subreddit choice for the standalone-post path:
+ * match topic words against whitelist names (plus a few topical aliases),
+ * fall back to the first whitelist entry so the choice always succeeds.
+ */
+function pickSubredditFor(topic: string): Subreddit {
+  const haystack = topic.toLowerCase();
+  for (const sub of SUBREDDIT_WHITELIST) {
+    if (haystack.includes(sub.toLowerCase())) return sub;
+  }
+  const aliases: Array<[RegExp, Subreddit]> = [
+    [/\b(llm|llama|local model)/, "LocalLLaMA"],
+    [/\b(ai|agent|model)/, "artificial"],
+    [/\b(saas|subscription)/, "SaaS"],
+    [/\b(indie|founder|launch)/, "indiehackers"],
+    [/\b(side ?project|mvp)/, "SideProject"],
+  ];
+  for (const [pattern, sub] of aliases) {
+    if (pattern.test(haystack)) return sub;
+  }
+  return SUBREDDIT_WHITELIST[0];
+}
+
+/**
+ * Standalone-post pipeline: (optional context search) → rules → draft → finish.
+ * Entered directly for goal=post, or as the auto-goal pivot once the reply
+ * search is exhausted (in that case search attempts are already spent, so the
+ * context-search branch self-skips).
+ */
+function decideMockPost(ctx: AgentContext, pivoted: boolean): AgentDecision {
+  // a) One context-research search — optional by design, never retried.
+  if (ctx.searchAttempts === 0) {
+    return {
+      action: "call_tool",
+      toolName: "search_reddit",
+      input: { keywords: keywordsFor(ctx), subreddits: [...SUBREDDIT_WHITELIST] },
+      reason: `Goal is an original post. Scanning the curated subreddits once to understand what is already being discussed about "${ctx.topic}".`,
+    };
+  }
+
+  const target = ctx.rules?.subreddit ?? pickSubredditFor(ctx.topic);
+
+  // b) Community norms before writing anything.
+  if (ctx.rules === null) {
+    return {
+      action: "call_tool",
+      toolName: "check_subreddit_rules",
+      input: { subreddit: target },
+      reason: pivoted
+        ? `No joinable thread found — pivoting to an original post. Checking r/${target} norms before drafting.`
+        : `r/${target} fits the topic best. Checking its tone guidelines before drafting the post.`,
+    };
+  }
+
+  // c) Draft the post along a topic-derived angle.
+  if (ctx.standalonePost === null && ctx.draftAttempts < AGENT_LIMITS.maxDraftAttempts) {
+    return {
+      action: "call_tool",
+      toolName: "draft_standalone_post",
+      input: {
+        subreddit: target,
+        angle: `Practical lessons and concrete trade-offs from hands-on work on ${ctx.topic}, framed to start a discussion`,
+      },
+      reason: `Drafting an original post for r/${target} that opens the conversation instead of joining one.`,
+    };
+  }
+
+  // d) Done.
+  if (ctx.standalonePost) {
+    return {
+      action: "finish",
+      reason: `Standalone post for r/${target} passes the self-check. Ready for human review.`,
+    };
+  }
+
+  return { action: "fail", reason: "Could not produce a standalone post within the attempt limits." };
+}
+
 function decideMock(ctx: AgentContext): AgentDecision {
+  // Post goal skips the reply pipeline entirely.
+  if (ctx.goal === "post") return decideMockPost(ctx, false);
+
   // 1) Need search results (first attempt, or retry after a low-quality batch).
   const needsSearch =
     ctx.posts.length === 0 || (ctx.quality !== null && !ctx.quality.acceptable);
@@ -113,7 +199,9 @@ function decideMock(ctx: AgentContext): AgentDecision {
       toolName: "search_reddit",
       input: { keywords: keywordsFor(ctx), subreddits: [...SUBREDDIT_WHITELIST] },
       reason: retrying
-        ? `Previous results scored ${ctx.quality?.score ?? 0} (below threshold). Retrying with broader keywords.`
+        ? ctx.posts.length === 0
+          ? "The last search returned no posts. Retrying with broader keywords."
+          : `Previous results scored ${ctx.quality?.score ?? 0} (below threshold). Retrying with broader keywords.`
         : `Searching the curated subreddits for active discussions about "${ctx.topic}".`,
     };
   }
@@ -128,8 +216,10 @@ function decideMock(ctx: AgentContext): AgentDecision {
     };
   }
 
-  // 3) Nothing usable and no retries left → fail honestly.
+  // 3) Search exhausted with nothing to reply to. Auto pivots to an original
+  //    post — the old dead end becomes a deliverable. Reply-only fails honestly.
   if (ctx.posts.length === 0) {
+    if (ctx.goal === "auto") return decideMockPost(ctx, true);
     return {
       action: "fail",
       reason: "No relevant posts found after exhausting search retries.",

@@ -7,7 +7,7 @@
  * the human reviews, edits and decides what to publish.
  */
 import { useState } from "react";
-import type { Draft, SubredditRules } from "@/lib/agent/schemas";
+import type { Draft, SelfCheck, SubredditRules } from "@/lib/agent/schemas";
 import { CheckIcon, CopyIcon, ShieldIcon } from "@/components/icons";
 
 const TONE_LABEL: Record<Draft["tone"], string> = {
@@ -16,13 +16,14 @@ const TONE_LABEL: Record<Draft["tone"], string> = {
   curious: "Curious",
 };
 
-function SelfCheckChips({ draft }: { draft: Draft }) {
+/** Shared between reply drafts and the standalone post panel. */
+export function SelfCheckChips({ selfCheck }: { selfCheck: SelfCheck }) {
   const chips = [
-    { label: "tone match", pass: draft.selfCheck.toneMatch },
-    { label: "useful", pass: draft.selfCheck.useful },
+    { label: "tone match", pass: selfCheck.toneMatch },
+    { label: "useful", pass: selfCheck.useful },
     {
-      label: `spam risk: ${draft.selfCheck.spamRisk}`,
-      pass: draft.selfCheck.spamRisk === "low",
+      label: `spam risk: ${selfCheck.spamRisk}`,
+      pass: selfCheck.spamRisk === "low",
     },
   ];
   return (
@@ -112,7 +113,7 @@ export function DraftsPanel({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <SelfCheckChips draft={active} />
+        <SelfCheckChips selfCheck={active.selfCheck} />
         <button
           onClick={copyActiveDraft}
           className={`flex min-h-[40px] items-center gap-2 rounded-lg border px-4 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${

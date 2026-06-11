@@ -11,6 +11,7 @@
  * refresh. The MVP intentionally has no persistence.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { RunGoal } from "@/lib/agent/schemas";
 import type { RunResult, TimelineEvent } from "@/lib/agent/types";
 
 export type RunStatus = "idle" | "running" | "finished" | "error";
@@ -66,7 +67,7 @@ export function useAgentRun() {
   // setState is never called on an unmounted component.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const run = useCallback(async (topic: string) => {
+  const run = useCallback(async (topic: string, goal: RunGoal = "auto") => {
     // Cancel any in-flight run before starting a new one.
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -88,7 +89,7 @@ export function useAgentRun() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, liveToken }),
+        body: JSON.stringify({ topic, goal, liveToken }),
         signal: controller.signal,
       });
 

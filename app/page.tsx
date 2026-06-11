@@ -11,7 +11,8 @@
  * This page owns run state (via useAgentRun) and the overall layout; each
  * lifecycle view lives in its own component under components/.
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import type { RunGoal } from "@/lib/agent/schemas";
 import { useAgentRun } from "@/hooks/useAgentRun";
 import { TopicForm } from "@/components/TopicForm";
 import { OutcomePreview } from "@/components/OutcomePreview";
@@ -114,10 +115,15 @@ export default function HomePage() {
   const { status, events, result, mockLlm, errorMessage, run } = useAgentRun();
   // Remembered so a failed run can be retried with one click.
   const lastTopicRef = useRef("");
+  const lastGoalRef = useRef<RunGoal>("auto");
+  // Mirrored in state because the result panels render differently per goal.
+  const [goal, setGoal] = useState<RunGoal>("auto");
 
-  function handleRun(topic: string) {
+  function handleRun(topic: string, runGoal: RunGoal) {
     lastTopicRef.current = topic;
-    run(topic);
+    lastGoalRef.current = runGoal;
+    setGoal(runGoal);
+    run(topic, runGoal);
   }
 
   const idle = status === "idle";
@@ -135,7 +141,11 @@ export default function HomePage() {
           {errorMessage && (
             <RunErrorNotice
               message={errorMessage}
-              onRetry={lastTopicRef.current ? () => run(lastTopicRef.current) : null}
+              onRetry={
+                lastTopicRef.current
+                  ? () => run(lastTopicRef.current, lastGoalRef.current)
+                  : null
+              }
             />
           )}
         </div>
@@ -144,7 +154,7 @@ export default function HomePage() {
         <div className="flex min-w-0 flex-col gap-4">
           {idle && <OutcomePreview />}
           {running && <ExecutionSection status={status} events={events} result={result} />}
-          <ResultPanels status={status} result={result} />
+          <ResultPanels status={status} result={result} goal={goal} />
           {terminal && result && (
             <div className="flex justify-end">
               <ExportRunButton result={result} />

@@ -11,6 +11,7 @@
  */
 import { z } from "zod";
 import { runAgent } from "@/lib/agent/orchestrator";
+import { runGoalSchema } from "@/lib/agent/schemas";
 import { isLiveLlmAuthorized, isMockLlm } from "@/lib/config";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { SSE_HEADERS, sseMessage } from "@/lib/sse";
@@ -25,6 +26,8 @@ export const maxDuration = 300;
 /** Validate user input at the system boundary. */
 const requestSchema = z.object({
   topic: z.string().trim().min(3, "Topic must be at least 3 characters").max(200),
+  /** Run goal; defaults to auto so older clients without it keep working. */
+  goal: runGoalSchema.default("auto"),
   /** Optional unlock token for live LLM mode on gated deployments. */
   liveToken: z.string().max(200).optional(),
 });
@@ -52,7 +55,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { topic, liveToken } = parsed.data;
+  const { topic, goal, liveToken } = parsed.data;
   // Per-request mode: env says whether live is possible at all, the token
   // gate says whether THIS visitor may spend real LLM credits.
   const mockLlm = isMockLlm() || !isLiveLlmAuthorized(liveToken);
@@ -79,7 +82,7 @@ export async function POST(req: Request) {
       // Pessimistic default: only a run that returns normally flips it.
       let outcome: "success" | "failed" = "failed";
       try {
-        const result = await runAgent(topic, (event) => send("timeline", event), abort.signal, mockLlm);
+        const result = await runAgent(topic, (event) => send("timeline", event), abort.signal, mockLlm, goal);
         outcome = result.outcome;
         send("result", result);
       } catch (err) {

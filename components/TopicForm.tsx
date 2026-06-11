@@ -7,25 +7,46 @@
  */
 import { useState, type FormEvent } from "react";
 import { SUBREDDIT_WHITELIST } from "@/lib/config";
+import type { RunGoal } from "@/lib/agent/schemas";
 import type { RunStatus } from "@/hooks/useAgentRun";
 import { PlayIcon } from "@/components/icons";
 
 const EXAMPLE_TOPIC = "building practical AI agents with Vercel AI SDK";
+
+/** Goal options with the one-line consequence each choice has on the run. */
+const GOAL_OPTIONS: Array<{ value: RunGoal; label: string; hint: string }> = [
+  {
+    value: "auto",
+    label: "Auto",
+    hint: "Tries to join a live thread; pivots to an original post if none fits.",
+  },
+  {
+    value: "reply",
+    label: "Reply only",
+    hint: "Drafts replies for an existing discussion, or reports why none worked.",
+  },
+  {
+    value: "post",
+    label: "Post only",
+    hint: "Skips thread hunting and drafts an original post for the best subreddit.",
+  },
+];
 
 export function TopicForm({
   status,
   onRun,
 }: {
   status: RunStatus;
-  onRun: (topic: string) => void;
+  onRun: (topic: string, goal: RunGoal) => void;
 }) {
   const [topic, setTopic] = useState(EXAMPLE_TOPIC);
+  const [goal, setGoal] = useState<RunGoal>("auto");
   const running = status === "running";
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = topic.trim();
-    if (trimmed.length >= 3 && !running) onRun(trimmed);
+    if (trimmed.length >= 3 && !running) onRun(trimmed, goal);
   }
 
   return (
@@ -55,6 +76,33 @@ export function TopicForm({
         className="mt-3 w-full resize-none rounded-lg border border-line bg-bg/60 px-3 py-2.5 text-[14px] leading-relaxed text-primary placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-60"
         placeholder={EXAMPLE_TOPIC}
       />
+
+      {/* Run goal — segmented radio pills, styled like the draft tone tabs. */}
+      <fieldset className="mt-3" disabled={running}>
+        <legend className="text-[12px] font-medium text-secondary">Goal</legend>
+        <div role="radiogroup" aria-label="Run goal" className="mt-1.5 flex gap-1.5">
+          {GOAL_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={goal === option.value}
+              onClick={() => setGoal(option.value)}
+              className={`min-h-[36px] flex-1 rounded-lg border px-2 font-mono text-[12px] transition-colors disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                goal === option.value
+                  ? "border-accent/40 bg-accent/15 text-accent"
+                  : "border-line bg-raised text-secondary hover:text-primary"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {/* Persistent hint so the consequence of the choice is never hidden. */}
+        <p className="mt-1.5 text-[12px] leading-relaxed text-secondary">
+          {GOAL_OPTIONS.find((o) => o.value === goal)?.hint}
+        </p>
+      </fieldset>
 
       <button
         type="submit"

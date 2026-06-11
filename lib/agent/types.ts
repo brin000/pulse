@@ -8,6 +8,8 @@ import type {
   Draft,
   PostSummary,
   QualityEvaluation,
+  RunGoal,
+  StandalonePost,
   SubredditRules,
   ToolName,
 } from "@/lib/agent/schemas";
@@ -22,6 +24,8 @@ import type {
  */
 export interface AgentContext {
   topic: string;
+  /** What the user asked for: reply drafts, an original post, or auto-pivot. */
+  goal: RunGoal;
   /**
    * Whether this run uses mock LLM decisions. Decided per request by the API
    * route (no API key, PULSE_MOCK, or an unauthorized visitor on a gated
@@ -41,6 +45,8 @@ export interface AgentContext {
   gap: ContentGap | null;
   rules: SubredditRules | null;
   drafts: Draft[];
+  /** Original post draft (post goal, or the auto-goal pivot output). */
+  standalonePost: StandalonePost | null;
   /** Whether the data behind this run came from the live Reddit API or mocks. */
   dataSource: "live" | "mock" | null;
   /** Validation/tool failures, kept so the model can react to them. */
@@ -87,6 +93,8 @@ export interface RunResult {
   gap: ContentGap | null;
   rules: SubredditRules | null;
   drafts: Draft[];
+  /** Original post draft, when the run produced one instead of (or beyond) replies. */
+  standalonePost: StandalonePost | null;
   dataSource: "live" | "mock" | null;
   steps: number;
 }

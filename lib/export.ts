@@ -53,6 +53,21 @@ export function runToMarkdown(result: RunResult): string {
     }
   }
 
+  if (result.standalonePost) {
+    const post = result.standalonePost;
+    const target = result.rules ? ` for r/${result.rules.subreddit}` : "";
+    lines.push(
+      "",
+      `## Standalone post${target}`,
+      "",
+      `### ${post.title}`,
+      "",
+      `_${TONE_LABEL[post.tone] ?? post.tone} · spam risk: ${post.selfCheck.spamRisk}_`,
+      "",
+      post.body,
+    );
+  }
+
   lines.push(
     "",
     "## Outcome (fill in after posting)",
